@@ -12,6 +12,7 @@
       "enabled": true,
       "force": false,
       "recommendedApps": {
+        "gnuWin32Make": true,
         "winget": true,
         "nvmWindows": true,
         "notepadplusplus": true,
@@ -54,6 +55,19 @@
       "images": ["myapp:latest"],
       "retryCount": 3,
       "retryDelaySeconds": 10
+    },
+    "configurations": {
+      "enabled": false,
+      "catalog": {
+        "addMakePath": true,
+        "addCopilotChatKeybindings": true,
+        "setGitHubUser": false,
+        "desktopLinkForThisApplication": false
+      },
+      "gitHubUser": {
+        "name": "Name Surname",
+        "email": "name.surname@yourcompany.com"
+      }
     }
   }
 }

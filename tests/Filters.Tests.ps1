@@ -68,7 +68,7 @@ Describe 'DevOps include/exclude filters' {
 }
 
 Describe 'DevOps organization resolution' {
-    It 'resolves organizations from AZURE_DEVOPS_ORGS' {
+    It 'parses organizations from AZURE_DEVOPS_ORGS' {
         [System.Environment]::SetEnvironmentVariable('AZURE_DEVOPS_ORGS', 'org-one, org-two', 'Process')
         $orgs = Resolve-DevOpsOrganizations -ModuleConfig @{}
         $orgs | Should -Be @('org-one', 'org-two')

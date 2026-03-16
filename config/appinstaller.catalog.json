@@ -39,6 +39,13 @@
       "linuxCommand": "pwsh"
     },
     {
+      "key": "gnuWin32Make",
+      "name": "GnuWin32.Make",
+      "category": "recommended",
+      "wingetId": "GnuWin32.Make",
+      "supportedPlatforms": ["Windows"]
+    },
+    {
       "key": "nvmWindows",
       "name": "Node Version Manager for Windows",
       "category": "recommended",

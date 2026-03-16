@@ -62,12 +62,20 @@ function Invoke-GitHubSync {
     }
 
     $tokenDiagnostics = Get-GitHubTokenDiagnostics -Token $token -ProjectRoot $ProjectRoot
-    Write-Log -Level Info -Message "GitHub token diagnostics: source=$($tokenDiagnostics.Source); envFileState=$($tokenDiagnostics.EnvFileState); length=$($tokenDiagnostics.Length); preview=$($tokenDiagnostics.Preview); format=$($tokenDiagnostics.Format)"
+    Write-GitHubKeyValueBlock -Title 'GitHub token diagnostics' -Data ([ordered]@{
+        source = $tokenDiagnostics.Source
+        envFileState = $tokenDiagnostics.EnvFileState
+        length = $tokenDiagnostics.Length
+        preview = $tokenDiagnostics.Preview
+        format = $tokenDiagnostics.Format
+    })
 
     $authResult = Test-GitHubTokenAccess -Headers $headers
     if (-not $authResult.IsValid) {
         if (-not [string]::IsNullOrWhiteSpace([string]$authResult.Diagnostics)) {
-            Write-Log -Level Warning -Message "GitHub auth diagnostics: $($authResult.Diagnostics)"
+            Write-GitHubKeyValueBlock -Title 'GitHub auth diagnostics' -Data ([ordered]@{
+                details = [string]$authResult.Diagnostics
+            }) -Level 'Warning'
         }
         $results.Add((New-ReportEntry -Module 'GitHub' -Item 'AUTH' -Status 'ERROR' -Message $authResult.Message))
         return $results
@@ -99,7 +107,7 @@ function Invoke-GitHubSync {
 
         if (-not (Test-GitHubRepoIncluded -Repo $repo -Config $moduleConfig)) {
             Write-Log -Level Info -Message "Repository [$repoIndex/$totalRepos]: $repoLabel"
-            $entry = New-ReportEntry -Module 'GitHub' -Item $relativeName -Status 'SKIPPED' -Message 'Filtered by usersInclude/usersExclude or organizationsInclude/organizationsExclude'
+            $entry = New-ReportEntry -Module 'GitHub' -Item $relativeName -Status 'SKIPPED' -Message 'Filtered by owner include/exclude rules.'
             $results.Add($entry)
             Write-GitHubRepoEntryLog -Entry $entry
             continue
@@ -136,7 +144,7 @@ function Invoke-GitHubSync {
 
     if ($moduleConfig.setFolderIcon) {
         if (Test-IsWindows) {
-            Set-WindowsFolderIcon -FolderPath $targetRoot
+            Set-WindowsFolderIcon -FolderPath $targetRoot -IconFile 'github.ico' -ProjectRoot $ProjectRoot
         }
         else {
             Write-Log -Level Warning -Message 'Folder icon option is Windows-only. Ignoring on this platform.'
@@ -173,7 +181,11 @@ function Get-AllVisibleGitHubRepos {
 
         $requestId = Get-HttpHeaderValue -Headers $response.Headers -Name 'X-GitHub-Request-Id'
         $itemsCount = @($items).Count
-        Write-Log -Level Info -Message "GitHub API response: page=$page count=$itemsCount requestId='$requestId'"
+        Write-GitHubKeyValueBlock -Title 'GitHub API response' -Data ([ordered]@{
+            page = $page
+            count = $itemsCount
+            requestId = $requestId
+        })
 
         if ($null -eq $items -or @($items).Count -eq 0) {
             break
@@ -321,7 +333,11 @@ function Test-GitHubTokenAccess {
         if ($null -ne $me -and -not [string]::IsNullOrWhiteSpace([string]$me.login)) {
             $scopes = Get-HttpHeaderValue -Headers $response.Headers -Name 'X-OAuth-Scopes'
             $requestId = Get-HttpHeaderValue -Headers $response.Headers -Name 'X-GitHub-Request-Id'
-            Write-Log -Level Info -Message "GitHub auth validated for user '$([string]$me.login)'. scopes='$scopes'; requestId='$requestId'"
+            Write-GitHubKeyValueBlock -Title 'GitHub auth validated' -Data ([ordered]@{
+                user = [string]$me.login
+                scopes = $scopes
+                requestId = $requestId
+            })
             return @{ IsValid = $true; Message = 'OK'; Diagnostics = ''; Login = [string]$me.login }
         }
 
@@ -453,6 +469,25 @@ function Get-HttpHeaderValue {
     catch {}
 
     return ''
+}
+
+function Write-GitHubKeyValueBlock {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Title,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Data,
+        [ValidateSet('Info', 'Warning', 'Error')][string]$Level = 'Info'
+    )
+
+    Write-Log -Level $Level -Message "${Title}:"
+    foreach ($key in @($Data.Keys)) {
+        $value = [string]$Data[$key]
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            $value = '-'
+        }
+
+        Write-Log -Level $Level -Message "  $key=$value"
+    }
 }
 
 function Write-GitHubRepoEntryLog {

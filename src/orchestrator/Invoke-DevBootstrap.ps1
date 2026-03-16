@@ -8,7 +8,7 @@ function Invoke-DevBootstrap {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$Config,
-        [ValidateSet('full', 'github', 'devops', 'acr', 'appInstaller')][string]$RunMode = 'full',
+        [ValidateSet('full', 'appInstaller', 'configurations', 'github', 'devops', 'acr')][string]$RunMode = 'full',
         [Parameter(Mandatory)][string]$ProjectRoot,
         [switch]$Force
     )
@@ -37,6 +37,13 @@ function Invoke-DevBootstrap {
             Enabled = $Config.modules.appInstaller.enabled
             ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Install-Apps.ps1'
             Invoke = { param($c, $p, $f) Invoke-AppInstaller -Config $c -ProjectRoot $p -Force:$f }
+        }
+        @{
+            Name = 'configurations'
+            Label = 'Local Configurations'
+            Enabled = $Config.modules.configurations.enabled
+            ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Apply-Configurations.ps1'
+            Invoke = { param($c, $p, $f) Invoke-Configurations -Config $c -ProjectRoot $p -Force:$f }
         }
         @{
             Name = 'github'
@@ -83,6 +90,7 @@ function Invoke-DevBootstrap {
         if ($hasCriticalError -and $failFast) {
             Add-ReportEntry -Entry (New-ReportEntry -Module $module.Label -Item 'MODULE' -Status 'SKIPPED' -Message 'Skipped due to fail-fast policy.')
             $moduleExecutions.Add(@{
+                Name = $module.Name
                 Module = $module.Label
                 Status = 'SKIPPED'
                 Items = 0
@@ -137,6 +145,7 @@ function Invoke-DevBootstrap {
         }
 
         $moduleExecutions.Add(@{
+            Name = $module.Name
             Module = $module.Label
             Status = $moduleStatus
             Items = $moduleItemCount
@@ -166,6 +175,12 @@ function Invoke-DevBootstrap {
     Write-ReportRemediationSteps -Entries $entries
 
     Write-ModuleExecutionSummary -ModuleExecutions $moduleExecutions -TotalOperations $entries.Count -ErrorCount $errorCount -TotalDuration $runTimer.Elapsed
+    $executedModuleNames = @(
+        $moduleExecutions |
+        Where-Object { $_.Status -ne 'SKIPPED' } |
+        ForEach-Object { ([string]$_.Name).ToLowerInvariant() }
+    )
+    Write-OrphanSummaryTables -Entries $entries -ExecutedModules $executedModuleNames
 
     Write-Log -Level Info -Message "Log file: $(Get-LogFilePath)"
     Write-Log -Level Info -Message '============================================='

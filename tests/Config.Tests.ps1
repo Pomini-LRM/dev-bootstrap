@@ -19,6 +19,7 @@ Describe 'Get-DefaultConfig' {
         $config.modules.github | Should -Not -BeNullOrEmpty
         $config.modules.devops | Should -Not -BeNullOrEmpty
         $config.modules.acr | Should -Not -BeNullOrEmpty
+        $config.modules.configurations | Should -Not -BeNullOrEmpty
     }
 
     It 'supports Windows and Linux module path styles' {
@@ -34,6 +35,7 @@ Describe 'Get-DefaultConfig' {
 
     It 'defines optional app toggles for appInstaller' {
         $config = Get-DefaultConfig
+        $config.modules.appInstaller.recommendedApps.gnuWin32Make | Should -BeTrue
         $config.modules.appInstaller.recommendedApps.winget | Should -BeTrue
         $config.modules.appInstaller.recommendedApps.vscode | Should -BeTrue
         $config.modules.appInstaller.recommendedApps.notepadplusplus | Should -BeTrue
@@ -41,6 +43,7 @@ Describe 'Get-DefaultConfig' {
         $config.modules.appInstaller.optionalApps.inkscape | Should -BeFalse
         $config.modules.appInstaller.optionalApps.pythonLatest | Should -BeFalse
         $config.modules.appInstaller.optionalApps.teamviewer | Should -BeFalse
+        $config.modules.configurations.catalog.desktopLinkForThisApplication | Should -BeFalse
     }
 }
 

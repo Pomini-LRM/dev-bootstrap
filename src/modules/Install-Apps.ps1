@@ -64,6 +64,7 @@ function Invoke-AppInstaller {
             $groupName = Get-AppInstallGroupName -App $app
             if ($groupName -ne $currentGroup) {
                 $currentGroup = $groupName
+                Write-Log -Level Info -Message ''
                 Write-Log -Level Info -Message "Starting app group install: $groupName"
             }
 

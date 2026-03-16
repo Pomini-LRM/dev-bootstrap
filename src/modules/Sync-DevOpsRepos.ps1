@@ -3,12 +3,12 @@
 .SYNOPSIS
     Azure DevOps repository synchronization module.
 .DESCRIPTION
-        Syncs repositories for organizations configured in AZURE_DEVOPS_ORGS.
+        Syncs repositories for one organization configured in AZURE_DEVOPS_ORGS.
         Optional include/exclude project filters limit project scope.
         Optional includeWikis setting controls code wiki download.
 
     Target path layout:
-            <path>/<organization>/<project>/<repo>
+            <path>/<project>/<repo>
 #>
 
 function Invoke-DevOpsSync {
@@ -42,11 +42,18 @@ function Invoke-DevOpsSync {
         return $results
     }
 
-    $organizations = Resolve-DevOpsOrganizations -ModuleConfig $moduleConfig
-    if ($organizations.Count -eq 0) {
-        $results.Add((New-ReportEntry -Module 'DevOps' -Item 'CONFIG' -Status 'ERROR' -Message 'No DevOps organization resolved. Configure AZURE_DEVOPS_ORGS.'))
+    $organizations = @(Resolve-DevOpsOrganizations -ModuleConfig $moduleConfig)
+    if (@($organizations).Count -eq 0) {
+        $results.Add((New-ReportEntry -Module 'DevOps' -Item 'CONFIG' -Status 'ERROR' -Message 'No Azure DevOps organization resolved from AZURE_DEVOPS_ORGS. Configure exactly one organization name.'))
         return $results
     }
+
+    if (@($organizations).Count -gt 1) {
+        $results.Add((New-ReportEntry -Module 'DevOps' -Item 'CONFIG' -Status 'ERROR' -Message "AZURE_DEVOPS_ORGS supports exactly one organization. Current value resolves to: $($organizations -join ', ')."))
+        return $results
+    }
+
+    $organization = [string]$organizations[0]
 
     $targetRoot = Resolve-ConfiguredPath -Path $moduleConfig.path
     if (-not (Test-Path -LiteralPath $targetRoot)) {
@@ -62,64 +69,80 @@ function Invoke-DevOpsSync {
     $retryDelay = if ($moduleConfig.retryDelaySeconds) { [int]$moduleConfig.retryDelaySeconds } else { 5 }
 
     $expected = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $knownRemote = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $workItems = [System.Collections.Generic.List[object]]::new()
 
-    foreach ($organization in $organizations) {
-        $projects = Get-DevOpsProjects -Organization $organization -Headers $headers -RetryCount $retryCount -RetryDelaySeconds $retryDelay
-        $projects = @($projects | Where-Object {
-                Test-DevOpsIncludeExcludeMatch -Name $_.name -IncludeTokens @($moduleConfig.projectsInclude) -ExcludeTokens @($moduleConfig.projectsExclude)
-            })
+    $projects = @(Get-DevOpsProjects -Organization $organization -Headers $headers -RetryCount $retryCount -RetryDelaySeconds $retryDelay)
+    foreach ($project in $projects) {
+        $projectName = [string]$project.name
+        $syncProject = Test-DevOpsIncludeExcludeMatch -Name $projectName -IncludeTokens @($moduleConfig.projectsInclude) -ExcludeTokens @($moduleConfig.projectsExclude)
 
-        foreach ($project in $projects) {
-            $repos = Get-DevOpsRepos -Organization $organization -Project $project.name -Headers $headers -RetryCount $retryCount -RetryDelaySeconds $retryDelay
-            foreach ($repo in $repos) {
-                $repoTimer = [System.Diagnostics.Stopwatch]::StartNew()
-                $relative = "$organization/$($project.name)/$($repo.name)"
-                $repoPath = Join-Path (Join-Path (Join-Path $targetRoot $organization) $project.name) $repo.name
-                $expected.Add($relative) | Out-Null
+        $repos = @(Get-DevOpsRepos -Organization $organization -Project $projectName -Headers $headers -RetryCount $retryCount -RetryDelaySeconds $retryDelay)
+        foreach ($repo in $repos) {
+            $repoName = [string]$repo.name
+            $relative = "$projectName/$repoName"
+            $knownRemote.Add($relative) | Out-Null
 
-                $cloneUrl = $repo.remoteUrl -replace '^https://', "https://pat:$pat@"
+            $workItems.Add([PSCustomObject]@{
+                    Label = "$projectName - $repoName"
+                    Relative = $relative
+                    DestinationPath = (Join-Path (Join-Path $targetRoot $projectName) $repoName)
+                    CloneUrl = ([string]$repo.remoteUrl)
+                    ShouldSync = $syncProject
+                })
+        }
 
-                try {
-                    $status = Invoke-GitCloneOrPull -CloneUrl $cloneUrl -DestinationPath $repoPath
-                    $repoTimer.Stop()
-                    $results.Add((New-ReportEntry -Module 'DevOps' -Item $relative -Status $status -Duration $repoTimer.Elapsed))
-                }
-                catch {
-                    $repoTimer.Stop()
-                    $results.Add((New-ReportEntry -Module 'DevOps' -Item $relative -Status 'ERROR' -Message "$_" -Duration $repoTimer.Elapsed))
-                }
-            }
+        if ($moduleConfig.includeWikis) {
+            $wikiName = "$projectName.wiki"
+            $wikiRelative = "$projectName/$wikiName"
+            $knownRemote.Add($wikiRelative) | Out-Null
 
-            if ($moduleConfig.includeWikis) {
-                $wikis = Get-DevOpsWikis -Organization $organization -Project $project.name -Headers $headers -RetryCount $retryCount -RetryDelaySeconds $retryDelay
-                foreach ($wiki in $wikis) {
-                    $wikiTimer = [System.Diagnostics.Stopwatch]::StartNew()
-                    $wikiName = "$($wiki.name).wiki"
-                    $relative = "$organization/$($project.name)/$wikiName"
-                    $wikiPath = Join-Path (Join-Path (Join-Path $targetRoot $organization) $project.name) $wikiName
-                    $expected.Add($relative) | Out-Null
-
-                    $cloneUrl = $wiki.remoteUrl -replace '^https://', "https://pat:$pat@"
-
-                    try {
-                        $status = Invoke-GitCloneOrPull -CloneUrl $cloneUrl -DestinationPath $wikiPath
-                        $wikiTimer.Stop()
-                        $results.Add((New-ReportEntry -Module 'DevOps' -Item $relative -Status $status -Duration $wikiTimer.Elapsed))
-                    }
-                    catch {
-                        $wikiTimer.Stop()
-                        $results.Add((New-ReportEntry -Module 'DevOps' -Item $relative -Status 'ERROR' -Message "$_" -Duration $wikiTimer.Elapsed))
-                    }
-                }
-            }
+            $workItems.Add([PSCustomObject]@{
+                    Label = "$projectName - $wikiName"
+                    Relative = $wikiRelative
+                    DestinationPath = (Join-Path (Join-Path $targetRoot $projectName) $wikiName)
+                    CloneUrl = (Get-DevOpsWikiRemoteUrl -Organization $organization -Project $projectName)
+                    ShouldSync = $syncProject
+                })
         }
     }
 
-    Add-DevOpsOrphanEntries -TargetRoot $targetRoot -Expected $expected -Results $results
+    $totalItems = $workItems.Count
+    $itemIndex = 0
+    foreach ($item in $workItems) {
+        $itemIndex++
+        Write-Log -Level Info -Message "Repository [$itemIndex/$totalItems]: $($item.Label)"
+
+        if (-not $item.ShouldSync) {
+            $entry = New-ReportEntry -Module 'DevOps' -Item $item.Relative -Status 'SKIPPED' -Message 'Filtered by project include/exclude rules.'
+            $results.Add($entry)
+            Write-DevOpsRepoEntryLog -Entry $entry
+            continue
+        }
+
+        $itemTimer = [System.Diagnostics.Stopwatch]::StartNew()
+        $expected.Add($item.Relative) | Out-Null
+        try {
+            $cloneUrl = Normalize-DevOpsRemoteUrl -RemoteUrl $item.CloneUrl
+            $gitResult = Invoke-GitCloneOrPull -CloneUrl $cloneUrl -DestinationPath $item.DestinationPath -DevOpsPat $pat
+            $itemTimer.Stop()
+            $entry = New-ReportEntry -Module 'DevOps' -Item $item.Relative -Status $gitResult.Status -Message $gitResult.Message -Duration $itemTimer.Elapsed
+            $results.Add($entry)
+            Write-DevOpsRepoEntryLog -Entry $entry
+        }
+        catch {
+            $itemTimer.Stop()
+            $entry = New-ReportEntry -Module 'DevOps' -Item $item.Relative -Status 'ERROR' -Message "$_" -Duration $itemTimer.Elapsed
+            $results.Add($entry)
+            Write-DevOpsRepoEntryLog -Entry $entry
+        }
+    }
+
+    Add-DevOpsOrphanEntries -TargetRoot $targetRoot -Expected $expected -KnownRemote $knownRemote -Results $results
 
     if ($moduleConfig.setFolderIcon) {
         if (Test-IsWindows) {
-            Set-WindowsFolderIcon -FolderPath $targetRoot
+            Set-WindowsFolderIcon -FolderPath $targetRoot -IconFile 'devops.ico' -ProjectRoot $ProjectRoot
         }
         else {
             Write-Log -Level Warning -Message 'Folder icon option is Windows-only. Ignoring on this platform.'
@@ -135,10 +158,62 @@ function Resolve-DevOpsOrganizations {
 
     $fromPlural = Get-SecureEnvVariable -Name 'AZURE_DEVOPS_ORGS'
     if ($fromPlural) {
-        return @($fromPlural.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        $resolved = [System.Collections.Generic.List[string]]::new()
+        foreach ($raw in @($fromPlural.Split(','))) {
+            $token = [string]$raw
+            $token = $token.Trim()
+
+            if ([string]::IsNullOrWhiteSpace($token)) {
+                continue
+            }
+
+            if ($token.StartsWith('#')) {
+                continue
+            }
+
+            $hashIndex = $token.IndexOf('#')
+            if ($hashIndex -ge 0) {
+                $token = $token.Substring(0, $hashIndex).Trim()
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($token)) {
+                $resolved.Add($token)
+            }
+        }
+
+        return @($resolved | Select-Object -Unique)
     }
 
     return @()
+}
+
+function Normalize-DevOpsRemoteUrl {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$RemoteUrl
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RemoteUrl)) {
+        return $RemoteUrl
+    }
+
+    # Keep remotes clean: strip any user-info if present.
+    if ($RemoteUrl -match '^https://') {
+        return ($RemoteUrl -replace '^https://[^@/]+@', 'https://')
+    }
+
+    return $RemoteUrl
+}
+
+function Get-DevOpsWikiRemoteUrl {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Organization,
+        [Parameter(Mandatory)][string]$Project
+    )
+
+    $wikiName = "$Project.wiki"
+    return "https://dev.azure.com/$Organization/$Project/_git/$wikiName"
 }
 
 function Test-DevOpsIncludeExcludeMatch {
@@ -149,8 +224,8 @@ function Test-DevOpsIncludeExcludeMatch {
         [object[]]$ExcludeTokens = @()
     )
 
-    $include = Get-DevOpsNormalizedFilterTokens -Tokens $IncludeTokens
-    $exclude = Get-DevOpsNormalizedFilterTokens -Tokens $ExcludeTokens
+    $include = @(Get-DevOpsNormalizedFilterTokens -Tokens $IncludeTokens)
+    $exclude = @(Get-DevOpsNormalizedFilterTokens -Tokens $ExcludeTokens)
 
     if ($exclude -contains '*' -or $exclude -contains $Name) {
         return $false
@@ -195,8 +270,8 @@ function Write-DevOpsFilterAmbiguityWarnings {
         [object[]]$ExcludeTokens
     )
 
-    $include = Get-DevOpsNormalizedFilterTokens -Tokens $IncludeTokens
-    $exclude = Get-DevOpsNormalizedFilterTokens -Tokens $ExcludeTokens
+    $include = @(Get-DevOpsNormalizedFilterTokens -Tokens $IncludeTokens)
+    $exclude = @(Get-DevOpsNormalizedFilterTokens -Tokens $ExcludeTokens)
 
     if ($include.Count -gt 1 -and $include -contains '*') {
         Write-Log -Level Warning -Message "$EntityLabel include list contains '*' and explicit names. Explicit names are redundant."
@@ -248,29 +323,12 @@ function Get-DevOpsRepos {
     return @($response.value | Where-Object { -not $_.isDisabled })
 }
 
-function Get-DevOpsWikis {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string]$Organization,
-        [Parameter(Mandatory)][string]$Project,
-        [Parameter(Mandatory)][hashtable]$Headers,
-        [int]$RetryCount,
-        [int]$RetryDelaySeconds
-    )
-
-    $url = "https://dev.azure.com/$Organization/$Project/_apis/wiki/wikis?api-version=7.0"
-    $response = Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "DevOps wikis ($Organization/$Project)" -ScriptBlock {
-        Invoke-RestMethod -Uri $url -Headers $Headers -Method GET
-    }
-
-    return @($response.value | Where-Object { $_.type -eq 'codeWiki' -and $_.remoteUrl })
-}
-
 function Add-DevOpsOrphanEntries {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$TargetRoot,
         [Parameter(Mandatory)][System.Collections.Generic.HashSet[string]]$Expected,
+        [Parameter(Mandatory)][System.Collections.Generic.HashSet[string]]$KnownRemote,
         [Parameter(Mandatory)][System.Collections.Generic.List[hashtable]]$Results
     )
 
@@ -278,17 +336,48 @@ function Add-DevOpsOrphanEntries {
         return
     }
 
-    $orgDirs = Get-ChildItem -LiteralPath $TargetRoot -Directory -ErrorAction SilentlyContinue
-    foreach ($orgDir in $orgDirs) {
-        $projectDirs = Get-ChildItem -LiteralPath $orgDir.FullName -Directory -ErrorAction SilentlyContinue
-        foreach ($projectDir in $projectDirs) {
-            $repoDirs = Get-ChildItem -LiteralPath $projectDir.FullName -Directory -ErrorAction SilentlyContinue
-            foreach ($repoDir in $repoDirs) {
-                $relative = "$($orgDir.Name)/$($projectDir.Name)/$($repoDir.Name)"
-                if (-not $Expected.Contains($relative)) {
-                    $Results.Add((New-ReportEntry -Module 'DevOps' -Item $relative -Status 'ORPHAN' -Message 'Local repository does not exist remotely for current scope'))
-                }
+    $projectDirs = Get-ChildItem -LiteralPath $TargetRoot -Directory -ErrorAction SilentlyContinue
+    foreach ($projectDir in $projectDirs) {
+        $repoDirs = Get-ChildItem -LiteralPath $projectDir.FullName -Directory -ErrorAction SilentlyContinue
+        foreach ($repoDir in $repoDirs) {
+            $relative = "$($projectDir.Name)/$($repoDir.Name)"
+            if ($KnownRemote.Contains($relative)) {
+                continue
+            }
+
+            if (-not $Expected.Contains($relative)) {
+                Write-Log -Level Info -Message "Repository [local-only]: $relative"
+                $entry = New-ReportEntry -Module 'DevOps' -Item $relative -Status 'ORPHAN' -Message 'Local repository does not exist remotely on Azure DevOps.'
+                $Results.Add($entry)
+                Write-DevOpsRepoEntryLog -Entry $entry
             }
         }
+    }
+}
+
+function Write-DevOpsRepoEntryLog {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$Entry)
+
+    $level = if ($Entry.Status -eq 'ERROR') { 'Error' } else { 'Info' }
+    $durationText = if ($Entry.Duration -gt [TimeSpan]::Zero) { " ($($Entry.Duration.ToString('hh\:mm\:ss')))" } else { '' }
+    $actionText = if ([string]::IsNullOrWhiteSpace([string]$Entry.Message)) { Get-DevOpsActionFromStatus -Status ([string]$Entry.Status) } else { [string]$Entry.Message }
+
+    Write-Log -Level $level -Message "  Action: $actionText"
+    Write-Log -Level $level -Message "  Status: $($Entry.Status)$durationText"
+}
+
+function Get-DevOpsActionFromStatus {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Status)
+
+    switch ($Status.ToUpperInvariant()) {
+        'ADDED' { return 'Repository cloned.' }
+        'UPDATED' { return 'Repository updated.' }
+        'NONE' { return 'Repository already up to date.' }
+        'SKIPPED' { return 'Repository skipped.' }
+        'ORPHAN' { return 'Local-only repository found.' }
+        'ERROR' { return 'Repository sync failed.' }
+        default { return 'Repository sync completed.' }
     }
 }

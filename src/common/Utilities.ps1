@@ -56,9 +56,20 @@ function Import-EnvFile {
         $key = $trimmed.Substring(0, $separator).Trim()
         $value = $trimmed.Substring($separator + 1).Trim()
 
-        if (-not [System.Environment]::GetEnvironmentVariable($key, 'Process')) {
+        # Do not overwrite active process values with empty .env values.
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            continue
+        }
+
+        $currentProcessValue = [System.Environment]::GetEnvironmentVariable($key, 'Process')
+        if ($currentProcessValue -ne $value) {
             [System.Environment]::SetEnvironmentVariable($key, $value, 'Process')
-            Write-Log -Level Debug -Message "Loaded environment variable from .env: $key"
+            if ([string]::IsNullOrWhiteSpace($currentProcessValue)) {
+                Write-Log -Level Debug -Message "Loaded environment variable from .env: $key"
+            }
+            else {
+                Write-Log -Level Debug -Message "Overrode process environment variable from .env: $key"
+            }
         }
     }
 }
@@ -143,7 +154,8 @@ function Invoke-GitCloneOrPull {
         [Parameter(Mandatory)][string]$CloneUrl,
         [Parameter(Mandatory)][string]$DestinationPath,
         [string]$GitHubToken,
-        [string]$GitHubUsername = 'git'
+        [string]$GitHubUsername = 'git',
+        [string]$DevOpsPat
     )
 
     $safeUrl = $CloneUrl -replace 'https://[^\s:@/]+:[^\s@/]+@', 'https://***:***@'
@@ -152,6 +164,10 @@ function Invoke-GitCloneOrPull {
         $credentials = "${GitHubUsername}:$GitHubToken"
         $basicAuth = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($credentials))
         $gitAuthConfigArgs = @('-c', "http.https://github.com/.extraheader=AUTHORIZATION: basic $basicAuth")
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($DevOpsPat) -and $CloneUrl -match '^https://dev\.azure\.com/') {
+        $basicAuth = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes(":$DevOpsPat"))
+        $gitAuthConfigArgs = @('-c', "http.https://dev.azure.com/.extraheader=AUTHORIZATION: Basic $basicAuth")
     }
 
     $previousTerminalPrompt = [System.Environment]::GetEnvironmentVariable('GIT_TERMINAL_PROMPT', 'Process')
@@ -168,7 +184,22 @@ function Invoke-GitCloneOrPull {
     [System.Environment]::SetEnvironmentVariable('GIT_CONFIG_NOSYSTEM', '1', 'Process')
 
     try {
-        if (Test-Path (Join-Path $DestinationPath '.git')) {
+        $hasDestination = Test-Path -LiteralPath $DestinationPath
+        $isGitRepo = $false
+        if ($hasDestination) {
+            $isGitRepo = Test-GitRepository -Path $DestinationPath
+        }
+
+        if ($hasDestination -and -not $isGitRepo) {
+            $children = @(Get-ChildItem -LiteralPath $DestinationPath -Force -ErrorAction SilentlyContinue)
+            if ($children.Count -gt 0) {
+                $backupPath = "${DestinationPath}.invalid.$((Get-Date).ToString('yyyyMMdd_HHmmss'))"
+                Write-Log -Level Warning -Message "Invalid local repository detected at '$DestinationPath'. Moving existing content to '$backupPath' and recloning."
+                Move-Item -LiteralPath $DestinationPath -Destination $backupPath -Force
+            }
+        }
+
+        if (Test-GitRepository -Path $DestinationPath) {
             Write-Log -Level Debug -Message "Running git pull in: $DestinationPath"
             $startLocation = Get-Location
             try {
@@ -181,12 +212,16 @@ function Invoke-GitCloneOrPull {
                 if ($gitAuthConfigArgs.Count -gt 0) {
                     $pullArgs += $gitAuthConfigArgs
                 }
-                $pullArgs += @('pull', '--ff-only', $CloneUrl)
+                $pullArgs += @('pull', '--ff-only')
                 $pullOutput = & git @pullArgs 2>&1
                 $pullText = $pullOutput -join "`n"
                 $summary = Get-GitOutputSummary -Output $pullOutput
 
                 if ($LASTEXITCODE -ne 0) {
+                    if ($pullText -match "configuration specifies to merge with the ref 'refs/heads/[^']+'" -or $pullText -match "couldn't find remote ref HEAD") {
+                        return @{ Status = 'NONE'; Message = 'Remote repository has no default branch yet (likely empty). Pull skipped.' }
+                    }
+
                     Write-Log -Level Error -Message "git pull failed in ${DestinationPath}: $pullText"
                     return @{ Status = 'ERROR'; Message = "git pull failed. $summary" }
                 }
@@ -218,9 +253,14 @@ function Invoke-GitCloneOrPull {
         }
         $cloneArgs += @('clone', $CloneUrl, $DestinationPath)
         $cloneOutput = & git @cloneArgs 2>&1
+        $cloneText = $cloneOutput -join "`n"
         $summary = Get-GitOutputSummary -Output $cloneOutput
         if ($LASTEXITCODE -eq 0) {
             return @{ Status = 'ADDED'; Message = "Repository cloned. $summary" }
+        }
+
+        if ($cloneText -match 'already exists and is not an empty directory') {
+            return @{ Status = 'ERROR'; Message = 'Destination folder is not empty and is not a valid git repository. Clean it or run again after backup.' }
         }
 
         Write-Log -Level Error -Message "git clone failed for ${safeUrl}: $($cloneOutput -join "`n")"
@@ -234,6 +274,22 @@ function Invoke-GitCloneOrPull {
         [System.Environment]::SetEnvironmentVariable('SSH_ASKPASS', $previousSshAskPass, 'Process')
         [System.Environment]::SetEnvironmentVariable('GIT_CONFIG_NOSYSTEM', $previousGitConfigNoSystem, 'Process')
     }
+}
+
+function Test-GitRepository {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $false
+    }
+
+    $output = & git -C $Path rev-parse --is-inside-work-tree 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return $false
+    }
+
+    return ([string]$output).Trim().ToLowerInvariant() -eq 'true'
 }
 
 function Get-GitOutputSummary {
@@ -262,7 +318,8 @@ function Set-WindowsFolderIcon {
     param(
         [Parameter(Mandatory)][string]$FolderPath,
         [string]$IconFile = 'shell32.dll',
-        [int]$IconIndex = 0
+        [int]$IconIndex = 0,
+        [string]$ProjectRoot
     )
 
     if (-not (Test-IsWindows)) {
@@ -271,13 +328,52 @@ function Set-WindowsFolderIcon {
     }
 
     try {
+        $iconResource = $IconFile
+        $isIcoFile = $IconFile.ToLowerInvariant().EndsWith('.ico')
+        if ($isIcoFile) {
+            $iconCandidatePaths = [System.Collections.Generic.List[string]]::new()
+
+            if ([System.IO.Path]::IsPathRooted($IconFile)) {
+                $iconCandidatePaths.Add($IconFile)
+            }
+            else {
+                if (-not [string]::IsNullOrWhiteSpace($ProjectRoot)) {
+                    $iconCandidatePaths.Add((Join-Path $ProjectRoot 'config' 'icons' $IconFile))
+                    $iconCandidatePaths.Add((Join-Path $ProjectRoot 'icons' $IconFile))
+                }
+
+                $localRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+                $iconCandidatePaths.Add((Join-Path $localRoot 'config' 'icons' $IconFile))
+                $iconCandidatePaths.Add((Join-Path $localRoot 'icons' $IconFile))
+            }
+
+            $sourceIconPath = $null
+            foreach ($candidate in $iconCandidatePaths) {
+                if (Test-Path -LiteralPath $candidate) {
+                    $sourceIconPath = $candidate
+                    break
+                }
+            }
+
+            if (-not $sourceIconPath) {
+                throw "Icon file '$IconFile' not found in repository icon folders."
+            }
+
+            $destinationIconPath = Join-Path $FolderPath ([System.IO.Path]::GetFileName($IconFile))
+            Copy-Item -LiteralPath $sourceIconPath -Destination $destinationIconPath -Force
+            $iconResource = [System.IO.Path]::GetFileName($IconFile)
+
+            $icon = Get-Item -LiteralPath $destinationIconPath -Force
+            $icon.Attributes = $icon.Attributes -bor [System.IO.FileAttributes]::Hidden
+        }
+
         $iniPath = Join-Path $FolderPath 'desktop.ini'
         $iniContent = @"
 [.ShellClassInfo]
-IconResource=$IconFile,$IconIndex
+IconResource=$iconResource,$IconIndex
 "@
 
-        Set-Content -LiteralPath $iniPath -Value $iniContent -Encoding utf8 -Force
+        Set-Content -LiteralPath $iniPath -Value $iniContent -Encoding unicode -Force
         $folder = Get-Item -LiteralPath $FolderPath -Force
         $folder.Attributes = $folder.Attributes -bor [System.IO.FileAttributes]::System
         $ini = Get-Item -LiteralPath $iniPath -Force

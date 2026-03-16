@@ -159,8 +159,8 @@ function Write-ReportRemediationSteps {
             continue
         }
 
-        if ($message -match 'No DevOps organization resolved') {
-            Add-RemediationStep -Steps $steps -Seen $seen -Step 'Set AZURE_DEVOPS_ORGS (comma-separated) in .env or environment variables.'
+        if ($message -match 'No (Azure )?DevOps organization resolved|supports exactly one organization') {
+            Add-RemediationStep -Steps $steps -Seen $seen -Step 'Set AZURE_DEVOPS_ORGS to a single organization name in .env or environment variables.'
             continue
         }
 
@@ -203,5 +203,43 @@ function Add-RemediationStep {
 
     if ($Seen.Add($Step)) {
         $Steps.Add($Step)
+    }
+}
+
+function Write-OrphanSummaryTables {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][System.Collections.IEnumerable]$Entries,
+        [Parameter(Mandatory)][string[]]$ExecutedModules
+    )
+
+    $entryList = @($Entries)
+    foreach ($moduleName in @('GitHub', 'DevOps')) {
+        $moduleKey = $moduleName.ToLowerInvariant()
+        if (-not ($ExecutedModules -contains $moduleKey)) {
+            continue
+        }
+
+        $orphans = @($entryList | Where-Object {
+                ([string]$_.Status).ToUpperInvariant() -eq 'ORPHAN' -and
+                ([string]$_.Module).Equals($moduleName, [System.StringComparison]::OrdinalIgnoreCase)
+            })
+
+        Write-Log -Level Info -Message ''
+        Write-Log -Level Info -Message "Orphan folders summary: $moduleName"
+        Write-Log -Level Info -Message '  INDEX  FOLDER'
+        Write-Log -Level Info -Message '  -----  ------------------------------------------------------------'
+
+        if ($orphans.Count -eq 0) {
+            Write-Log -Level Info -Message '      -  (none)'
+            continue
+        }
+
+        $index = 1
+        foreach ($entry in $orphans) {
+            $indexText = $index.ToString().PadLeft(5)
+            Write-Log -Level Info -Message "  $indexText  $($entry.Item)"
+            $index++
+        }
     }
 }

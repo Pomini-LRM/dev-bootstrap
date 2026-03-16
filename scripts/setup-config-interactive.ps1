@@ -100,6 +100,19 @@ function Read-AppInstallerCatalog {
     return ($raw | ConvertFrom-Json -AsHashtable -Depth 30)
 }
 
+function Read-ConfigurationsCatalog {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+
+    $catalogPath = Join-Path $ProjectRoot 'config' 'configurations.catalog.json'
+    if (-not (Test-Path -LiteralPath $catalogPath)) {
+        throw "Configurations catalog not found: $catalogPath"
+    }
+
+    $raw = Get-Content -LiteralPath $catalogPath -Raw -Encoding utf8
+    return ($raw | ConvertFrom-Json -AsHashtable -Depth 30)
+}
+
 function Merge-Hashtable {
     [CmdletBinding()]
     param(
@@ -163,7 +176,7 @@ function Get-CompactUserConfig {
         modules = @{}
     }
 
-    foreach ($moduleName in @('appInstaller', 'github', 'devops', 'acr')) {
+    foreach ($moduleName in @('appInstaller', 'github', 'devops', 'acr', 'configurations')) {
         $moduleConfig = $Config.modules[$moduleName]
         if ($moduleConfig.enabled) {
             if ($moduleName -eq 'appInstaller') {
@@ -182,6 +195,21 @@ function Get-CompactUserConfig {
                     force = [bool]$moduleConfig.force
                     recommendedApps = $recommendedApps
                     optionalApps = $optionalApps
+                }
+            }
+            elseif ($moduleName -eq 'configurations') {
+                $catalog = @{}
+                foreach ($key in @($moduleConfig.catalog.Keys | Sort-Object)) {
+                    $catalog[$key] = [bool]$moduleConfig.catalog[$key]
+                }
+
+                $result.modules[$moduleName] = @{
+                    enabled = $true
+                    catalog = $catalog
+                    gitHubUser = @{
+                        name = [string]$moduleConfig.gitHubUser.name
+                        email = [string]$moduleConfig.gitHubUser.email
+                    }
                 }
             }
             else {
@@ -203,9 +231,10 @@ function Read-EnabledModulesFallback {
     Write-Host ''
     Write-Host 'Which modules do you want to enable? (multi-select)' -ForegroundColor Cyan
     Write-Host '[1] appInstaller'
-    Write-Host '[2] github'
-    Write-Host '[3] devops'
-    Write-Host '[4] acr'
+    Write-Host '[2] configurations'
+    Write-Host '[3] github'
+    Write-Host '[4] devops'
+    Write-Host '[5] acr'
 
     $raw = Read-Host 'Enter numbers separated by comma (empty = keep defaults)'
     if ([string]::IsNullOrWhiteSpace($raw)) {
@@ -213,15 +242,15 @@ function Read-EnabledModulesFallback {
             return $DefaultSelection
         }
 
-        return @('appInstaller', 'github', 'devops', 'acr')
+        return @('appInstaller', 'configurations', 'github', 'devops', 'acr')
     }
 
-    $map = @{ '1' = 'appInstaller'; '2' = 'github'; '3' = 'devops'; '4' = 'acr' }
+    $map = @{ '1' = 'appInstaller'; '2' = 'configurations'; '3' = 'github'; '4' = 'devops'; '5' = 'acr' }
     $selected = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 
     foreach ($token in @($raw.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
         if (-not $map.ContainsKey($token)) {
-            throw "Invalid module choice '$token'. Valid values are 1,2,3,4."
+            throw "Invalid module choice '$token'. Valid values are 1,2,3,4,5."
         }
 
         $selected.Add($map[$token]) | Out-Null
@@ -238,7 +267,7 @@ function Read-EnabledModules {
         return Read-EnabledModulesFallback -DefaultSelection $DefaultSelection
     }
 
-    $modules = @('appInstaller', 'github', 'devops', 'acr')
+    $modules = @('appInstaller', 'configurations', 'github', 'devops', 'acr')
     $selected = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($item in $DefaultSelection) {
         if ($modules -contains $item) {
@@ -298,7 +327,7 @@ function Get-EnabledModuleDefaults {
     param([Parameter(Mandatory)][hashtable]$Config)
 
     $enabled = [System.Collections.Generic.List[string]]::new()
-    foreach ($moduleName in @('appInstaller', 'github', 'devops', 'acr')) {
+    foreach ($moduleName in @('appInstaller', 'configurations', 'github', 'devops', 'acr')) {
         if ($Config.modules[$moduleName].enabled) {
             $enabled.Add($moduleName)
         }
@@ -336,7 +365,7 @@ Write-Host "Output:   $OutputPath"
 $enabledModuleDefaults = Get-EnabledModuleDefaults -Config $config
 $enabledModules = Read-EnabledModules -DefaultSelection $enabledModuleDefaults
 
-foreach ($moduleName in @('appInstaller', 'github', 'devops', 'acr')) {
+foreach ($moduleName in @('appInstaller', 'configurations', 'github', 'devops', 'acr')) {
     $config.modules[$moduleName].enabled = $enabledModules -contains $moduleName
 }
 
@@ -398,6 +427,36 @@ if ($config.modules.appInstaller.enabled) {
     }
 }
 
+if ($config.modules.configurations.enabled) {
+    Write-Host ''
+    Write-Host 'Module: configurations' -ForegroundColor Cyan
+
+    $configCatalog = Read-ConfigurationsCatalog -ProjectRoot $projectRoot
+
+    if (-not $config.modules.configurations.ContainsKey('catalog') -or $null -eq $config.modules.configurations.catalog) {
+        $config.modules.configurations.catalog = @{}
+    }
+
+    if (-not $config.modules.configurations.ContainsKey('gitHubUser') -or $null -eq $config.modules.configurations.gitHubUser) {
+        $config.modules.configurations.gitHubUser = @{ name = ''; email = '' }
+    }
+
+    foreach ($entry in @($configCatalog.configurations)) {
+        $key = [string]$entry.key
+        if (-not $config.modules.configurations.catalog.ContainsKey($key)) {
+            $config.modules.configurations.catalog[$key] = $false
+        }
+
+        $prompt = "Enable configuration: $($entry.name)?"
+        $config.modules.configurations.catalog[$key] = Read-YesNo -Prompt $prompt -Default ([bool]$config.modules.configurations.catalog[$key])
+    }
+
+    if ([bool]$config.modules.configurations.catalog.setGitHubUser) {
+        $config.modules.configurations.gitHubUser.name = Read-TextWithDefault -Prompt 'Git user.name' -Default ([string]$config.modules.configurations.gitHubUser.name)
+        $config.modules.configurations.gitHubUser.email = Read-TextWithDefault -Prompt 'Git user.email' -Default ([string]$config.modules.configurations.gitHubUser.email)
+    }
+}
+
 if ($config.modules.github.enabled) {
     Write-Host ''
     Write-Host 'Module: github' -ForegroundColor Cyan
@@ -441,7 +500,7 @@ Write-Host ''
 Write-Host "Configuration saved to: $OutputPath" -ForegroundColor Green
 Write-Host 'Next steps:' -ForegroundColor Green
 
-$enabled = @(@('appInstaller', 'github', 'devops', 'acr') | Where-Object { $config.modules[$_].enabled })
+$enabled = @(@('appInstaller', 'configurations', 'github', 'devops', 'acr') | Where-Object { $config.modules[$_].enabled })
 $requiredVariables = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 
 if ($enabled -contains 'github') {

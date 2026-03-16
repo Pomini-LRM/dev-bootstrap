@@ -22,6 +22,7 @@ function Get-DefaultConfig {
                 enabled = $true
                 force = $false
                 recommendedApps = @{
+                    gnuWin32Make = $true
                     winget = $true
                     nvmWindows = $true
                     notepadplusplus = $true
@@ -64,6 +65,19 @@ function Get-DefaultConfig {
                 images = @()
                 retryCount = 3
                 retryDelaySeconds = 10
+            }
+            configurations = @{
+                enabled = $false
+                catalog = @{
+                    addMakePath = $true
+                    addCopilotChatKeybindings = $true
+                    setGitHubUser = $false
+                    desktopLinkForThisApplication = $false
+                }
+                gitHubUser = @{
+                    name = ''
+                    email = ''
+                }
             }
         }
     }
@@ -213,6 +227,27 @@ function Test-DevBootstrapConfig {
         }
     }
 
+    if ($Config.modules.configurations.enabled) {
+        if ($null -eq $Config.modules.configurations.catalog -or -not ($Config.modules.configurations.catalog -is [System.Collections.IDictionary])) {
+            $errors.Add('modules.configurations.catalog must be a hashtable of boolean flags.')
+        }
+
+        if ($Config.modules.configurations.catalog.setGitHubUser) {
+            if (-not $Config.modules.configurations.ContainsKey('gitHubUser') -or -not ($Config.modules.configurations.gitHubUser -is [System.Collections.IDictionary])) {
+                $errors.Add('modules.configurations.gitHubUser must be set when modules.configurations.catalog.setGitHubUser is enabled.')
+            }
+            else {
+                if ([string]::IsNullOrWhiteSpace([string]$Config.modules.configurations.gitHubUser.name)) {
+                    $errors.Add('modules.configurations.gitHubUser.name must not be empty when setGitHubUser is enabled.')
+                }
+
+                if ([string]::IsNullOrWhiteSpace([string]$Config.modules.configurations.gitHubUser.email)) {
+                    $errors.Add('modules.configurations.gitHubUser.email must not be empty when setGitHubUser is enabled.')
+                }
+            }
+        }
+    }
+
     return @($errors)
 }
 
@@ -242,7 +277,7 @@ function Normalize-AppInstallerAppSelectionConfig {
         $appInstaller.optionalApps = @{}
     }
 
-    $recommendedKeys = @('winget', 'nvmWindows', 'notepadplusplus', 'python31012', 'vscode')
+    $recommendedKeys = @('gnuWin32Make', 'winget', 'nvmWindows', 'notepadplusplus', 'python31012', 'vscode')
     foreach ($key in $recommendedKeys) {
         if ($appInstaller.optionalApps.ContainsKey($key)) {
             $appInstaller.recommendedApps[$key] = [bool]$appInstaller.optionalApps[$key]
