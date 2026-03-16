@@ -1,0 +1,117 @@
+{
+  "requiredByModule": {
+    "general": ["powershell7"],
+    "github": ["git"],
+    "devops": ["git"],
+    "acr": ["azure-cli", "docker"]
+  },
+  "apps": [
+    {
+      "key": "azure-cli",
+      "name": "Azure CLI",
+      "category": "required",
+      "wingetId": "Microsoft.AzureCLI",
+      "linuxPackage": "azure-cli",
+      "linuxCommand": "az"
+    },
+    {
+      "key": "docker",
+      "name": "Docker",
+      "category": "required",
+      "wingetId": "Docker.DockerDesktop",
+      "linuxPackage": "docker.io",
+      "linuxCommand": "docker"
+    },
+    {
+      "key": "git",
+      "name": "Git",
+      "category": "required",
+      "wingetId": "Git.Git",
+      "linuxPackage": "git",
+      "linuxCommand": "git"
+    },
+    {
+      "key": "powershell7",
+      "name": "PowerShell 7",
+      "category": "required",
+      "wingetId": "Microsoft.PowerShell",
+      "linuxPackage": "powershell",
+      "linuxCommand": "pwsh"
+    },
+    {
+      "key": "nvmWindows",
+      "name": "Node Version Manager for Windows",
+      "category": "recommended",
+      "wingetId": "CoreyButler.NVMforWindows",
+      "supportedPlatforms": ["Windows"]
+    },
+    {
+      "key": "notepadplusplus",
+      "name": "Notepad++",
+      "category": "recommended",
+      "wingetId": "Notepad++.Notepad++",
+      "supportedPlatforms": ["Windows"]
+    },
+    {
+      "key": "python31012",
+      "name": "Python 3.10.12",
+      "category": "recommended",
+      "wingetId": "Python.Python.3.10",
+      "linuxPackage": "python3.10",
+      "linuxCommand": "python3.10"
+    },
+    {
+      "key": "vscode",
+      "name": "Visual Studio Code",
+      "category": "recommended",
+      "wingetId": "Microsoft.VisualStudioCode",
+      "linuxPackage": "code",
+      "linuxCommand": "code"
+    },
+    {
+      "key": "winget",
+      "name": "Windows Package Manager",
+      "category": "recommended",
+      "wingetId": "Microsoft.AppInstaller",
+      "supportedPlatforms": ["Windows"],
+      "linuxCommand": ""
+    },
+    {
+      "key": "githubCopilot",
+      "name": "GitHub Copilot",
+      "category": "optional",
+      "wingetId": "GitHub.Copilot",
+      "supportedPlatforms": ["Windows"]
+    },
+    {
+      "key": "githubDesktop",
+      "name": "GitHub Desktop",
+      "category": "optional",
+      "wingetId": "GitHub.GitHubDesktop",
+      "supportedPlatforms": ["Windows"]
+    },
+    {
+      "key": "inkscape",
+      "name": "Inkscape",
+      "category": "optional",
+      "wingetId": "Inkscape.Inkscape",
+      "linuxPackage": "inkscape",
+      "linuxCommand": "inkscape"
+    },
+    {
+      "key": "pythonLatest",
+      "name": "Python (latest)",
+      "category": "optional",
+      "wingetId": "Python.Python.3",
+      "linuxPackage": "python3",
+      "linuxCommand": "python3"
+    },
+    {
+      "key": "teamviewer",
+      "name": "TeamViewer",
+      "category": "optional",
+      "wingetId": "TeamViewer.TeamViewer",
+      "supportedPlatforms": ["Windows"]
+    }
+  ]
+}

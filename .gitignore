@@ -1,0 +1,29 @@
+# Logs
+log/*.log
+
+# Configuration with secrets
+config/config.json
+.env
+
+# PowerShell
+*.psm1~
+*.psd1~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test results
+testResults.xml
+coverage.xml
+
+# config backup
+config/*.bak.*

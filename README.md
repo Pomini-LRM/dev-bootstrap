@@ -1,0 +1,428 @@
+# dev-bootstrap
+
+Cross-platform environment bootstrap suite for PowerShell 7+.
+
+`dev-bootstrap` is designed for first-time setup on a new machine and repeated update runs afterward. It installs required software, synchronizes repositories, and pulls container images through a modular orchestrator.
+
+## Table of Contents
+
+- [dev-bootstrap](#dev-bootstrap)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Project Structure](#project-structure)
+  - [Execution Prerequisites](#execution-prerequisites)
+  - [First-Time Setup](#first-time-setup)
+    - [Windows](#windows)
+    - [Linux](#linux)
+  - [Configuration](#configuration)
+    - [General](#general)
+    - [GitHub Settings](#github-settings)
+    - [DevOps Settings](#devops-settings)
+    - [AppInstaller and Module Dependencies](#appinstaller-and-module-dependencies)
+  - [Run Modes](#run-modes)
+  - [Modules](#modules)
+    - [appInstaller](#appinstaller)
+    - [github](#github)
+    - [devops](#devops)
+    - [acr](#acr)
+  - [Token Guides](#token-guides)
+  - [Logging and Report](#logging-and-report)
+  - [Security](#security)
+  - [Testing](#testing)
+  - [Troubleshooting](#troubleshooting)
+  - [Known Limitations](#known-limitations)
+  - [License](#license)
+
+## Overview
+
+Main capabilities:
+
+- Orchestrated full run or per-module execution.
+- Application installation and dependency enforcement.
+- GitHub repository synchronization.
+- Azure DevOps repository synchronization (optional wiki sync).
+- Azure Container Registry image pull.
+- Persistent logging with standardized final report.
+
+The tool is idempotent and intended for both:
+
+- Initial workstation bootstrap.
+- Ongoing update/sync runs.
+
+## Project Structure
+
+```text
+dev-bootstrap/
+├── dev-bootstrap.ps1
+├── src/
+│   ├── common/
+│   │   ├── Config.ps1
+│   │   ├── Logger.ps1
+│   │   ├── Platform.ps1
+│   │   ├── Report.ps1
+│   │   └── Utilities.ps1
+│   ├── modules/
+│   │   ├── Install-Apps.ps1
+│   │   ├── Sync-GitHubRepos.ps1
+│   │   ├── Sync-DevOpsRepos.ps1
+│   │   └── Sync-AcrImages.ps1
+│   └── orchestrator/
+│       └── Invoke-DevBootstrap.ps1
+├── scripts/
+│   ├── install-prerequisites-windows.ps1
+│   ├── install-prerequisites-linux.sh
+│   ├── bump-version.ps1
+│   └── setup-config-interactive.ps1
+├── config/
+│   ├── config.example.json
+│   ├── version.json
+│   └── appinstaller.catalog.json
+├── docs/
+│   ├── github-classic-token.md
+│   ├── azure-devops-pat.md
+│   └── developer-versioning.md
+└── tests/
+```
+
+## Execution Prerequisites
+
+These are the **minimum prerequisites required to run dev-bootstrap itself**:
+
+- PowerShell 7+
+- Network access to package and git providers
+- A supported OS: Windows or Linux
+
+Use dedicated bootstrap scripts:
+
+- Windows: [scripts/install-prerequisites-windows.ps1](scripts/install-prerequisites-windows.ps1)
+- Linux: [scripts/install-prerequisites-linux.sh](scripts/install-prerequisites-linux.sh)
+
+Module-specific dependencies are not listed as global prerequisites. They are automatically handled by `appInstaller` when the related modules are enabled.
+
+## First-Time Setup
+
+1. Clone the repository.
+2. Install minimum prerequisites for your OS.
+3. Create config and environment files.
+4. Run full bootstrap.
+
+### Windows
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install-prerequisites-windows.ps1
+
+# Option A: interactive configuration wizard
+pwsh .\scripts\setup-config-interactive.ps1
+
+# Option B: manual file copy
+Copy-Item .\.env.example .\.env
+
+pwsh .\dev-bootstrap.ps1
+```
+
+Interactive wizard notes:
+
+- In module selection, use arrow keys to move, space to select/unselect, enter to confirm.
+- If `config/config.json` already exists, it is loaded and reused as defaults.
+- Before writing changes, the previous config is saved as a timestamped backup (`config.json.bak.yyyyMMdd_HHmmss`).
+
+### Linux
+
+```bash
+chmod +x ./scripts/install-prerequisites-linux.sh
+./scripts/install-prerequisites-linux.sh
+
+# Option A: interactive configuration wizard
+pwsh ./scripts/setup-config-interactive.ps1
+
+# Option B: manual file copy
+cp .env.example .env
+
+pwsh ./dev-bootstrap.ps1
+```
+
+Interactive wizard notes:
+
+- In module selection, use arrow keys to move, space to select/unselect, enter to confirm.
+- If `config/config.json` already exists, it is loaded and reused as defaults.
+- Before writing changes, the previous config is saved as a timestamped backup (`config.json.bak.yyyyMMdd_HHmmss`).
+
+## Configuration
+
+Copy and edit:
+
+```bash
+cp config/config.example.json config/config.json
+cp .env.example .env
+```
+
+Interactive alternative:
+
+```powershell
+pwsh .\scripts\setup-config-interactive.ps1
+```
+
+The interactive wizard supports incremental updates:
+
+- Existing values from `config/config.json` are preloaded as defaults.
+- You can modify only what you need and keep the rest unchanged.
+- The previous file is automatically backed up before each save.
+- Disabled modules are saved in compact form (`"enabled": false` only); full module properties are restored automatically when re-enabled in the wizard.
+
+### General
+
+```json
+"general": {
+  "logDirectory": "log",
+  "failFast": false,
+  "silent": false,
+  "debug": false,
+  "noConfirm": false,
+  "force": false
+}
+```
+
+`general.force` behavior:
+
+- `false` (default): app installation keeps idempotent mode and skips already installed apps.
+- `true`: app installation attempts upgrade/reinstall behavior for already installed apps (where supported by package manager).
+- Scope: `general.force` is a global default consumed by `appInstaller`.
+
+### GitHub Settings
+
+```json
+"github": {
+  "enabled": true,
+  "path": "D:\\GitHub",
+  "usersInclude": ["*"],
+  "usersExclude": [],
+  "organizationsInclude": ["*"],
+  "organizationsExclude": [],
+  "setFolderIcon": true
+}
+```
+
+Behavior:
+
+- `path` must be a full path (absolute path or `~` home-based path).
+- For each filter pair, exclude wins over include.
+- `usersInclude = ["*"]` and `usersExclude = []` sync all user-owned repositories.
+- `usersInclude = ["*"]` and `usersExclude = ["exampleUser"]` sync all user-owned repositories except `exampleUser`.
+- `usersInclude = ["exampleUser"]` and `usersExclude = []` sync only `exampleUser` user-owned repositories.
+- The same include/exclude logic applies to organizations through `organizationsInclude` and `organizationsExclude`.
+- Ambiguous filter cases are accepted with deterministic behavior and warning logs:
+  - Include contains `*` plus explicit names: explicit names are redundant.
+  - Exclude contains `*`: everything in that scope is excluded.
+  - The same token appears in include and exclude: exclude wins.
+- Path layout is always:
+  - `<path>/<owner>/<repo>`
+
+Example:
+
+- `path = D:\\GitHub`
+- Owner `my-org`, repo `platform-api`
+- Result: `D:\GitHub\my-org\platform-api`
+
+### DevOps Settings
+
+```json
+"devops": {
+  "enabled": true,
+  "path": "D:\\DevOps",
+  "projectsInclude": ["*"],
+  "projectsExclude": [],
+  "includeWikis": false,
+  "setFolderIcon": true
+}
+```
+
+Behavior:
+
+- `path` must be a full path (absolute path or `~` home-based path).
+- Organizations must be provided through `AZURE_DEVOPS_ORGS` (comma-separated).
+- `projectsInclude` / `projectsExclude` follow the same include/exclude rules used for GitHub filters.
+- If `includeWikis` is true, all code wikis in scope are synced.
+- If `includeWikis` is false, no wiki is synced.
+- Path layout:
+  - `<path>/<organization>/<project>/<repo>`
+
+### AppInstaller and Module Dependencies
+
+`appInstaller` uses three app groups:
+
+- Module-required apps: managed automatically from enabled modules.
+- Recommended apps: enabled manually through booleans in config.
+- Optional apps: enabled manually through booleans in config.
+
+The complete app metadata (`wingetId`, `linuxPackage`, `linuxCommand`) is stored in:
+
+- `config/appinstaller.catalog.json`
+
+In `config/config.json`, app toggles are stored under `optionalApps` for both recommended and optional apps:
+
+```json
+"appInstaller": {
+  "enabled": true,
+  "force": false,
+  "optionalApps": {
+    "winget": true,
+    "nvmWindows": true,
+    "notepadplusplus": true,
+    "python31012": true,
+    "vscode": true,
+    "githubCopilot": false,
+    "githubDesktop": false,
+    "inkscape": false,
+    "pythonLatest": false
+  }
+}
+```
+
+When a module is enabled, module-required apps are automatically included and cannot be disabled by optional app toggles.
+
+## Run Modes
+
+```powershell
+# Full run (enabled modules, default)
+pwsh ./dev-bootstrap.ps1
+
+# Equivalent explicit form
+pwsh ./dev-bootstrap.ps1 -RunMode full
+
+# Single module
+pwsh ./dev-bootstrap.ps1 -RunMode appInstaller
+pwsh ./dev-bootstrap.ps1 -RunMode github
+pwsh ./dev-bootstrap.ps1 -RunMode devops
+pwsh ./dev-bootstrap.ps1 -RunMode acr
+
+```
+
+Common options:
+
+- `-NoConfirm` (default is disabled; prompts are shown unless you enable this)
+- `-Silent`
+- `-Debug`
+- `-FailFast`
+- `-Force`
+- `-ConfigPath <path>`
+
+Developer-only version management and release notes are documented here:
+
+- `docs/developer-versioning.md`
+
+## Modules
+
+### appInstaller
+
+- Installs apps on Windows (winget) and Linux (apt/dnf/yum/zypper).
+- Idempotent behavior with `INSTALLED`, `ALREADY_PRESENT`, `SKIPPED`, `ERROR` statuses.
+- On Windows with winget, runtime logs and final report include best-effort version details (`Current`, `Latest`) when detectable.
+- `PowerShell 7` is always treated as required baseline dependency when `appInstaller` runs.
+- On subsequent runs, AppInstaller always attempts to update required apps and selected optional apps to the latest available version.
+- `-Force` remains available for package managers/scenarios that require forced reinstall behavior.
+- Enforces module-required apps for enabled modules.
+- Recommended app toggles:
+  - `winget`
+  - `nvmWindows`
+  - `notepadplusplus`
+  - `python31012`
+  - `vscode`
+- Optional app toggles:
+  - `githubCopilot`
+  - `githubDesktop`
+  - `inkscape`
+  - `pythonLatest`
+
+`force` behavior and precedence:
+
+- `modules.appInstaller.force = false`: keep normal idempotent behavior unless overridden.
+- `modules.appInstaller.force = true`: force behavior always active for appInstaller.
+- Effective force precedence is OR-based:
+  - CLI `-Force`
+  - `general.force`
+  - `modules.appInstaller.force`
+
+### github
+
+- Syncs repositories visible to the authenticated token.
+- Supports user and organization include/exclude filters.
+- Full pagination and retry.
+- Detects local orphan repositories.
+
+### devops
+
+- Syncs repositories in selected organizations/projects.
+- Optional all-or-none code wiki synchronization.
+- Retry and orphan detection.
+
+### acr
+
+- Verifies Azure CLI and Docker availability.
+- Logs in to Azure and ACR registries.
+- Pulls configured images with retry behavior.
+
+## Token Guides
+
+- GitHub token guide: [docs/github-classic-token.md](docs/github-classic-token.md)
+- Azure DevOps PAT guide: [docs/azure-devops-pat.md](docs/azure-devops-pat.md)
+
+## Logging and Report
+
+Log file naming format:
+
+- `YYYYMMDD_HHMMSS_log.log`
+
+Example:
+
+- `log/20260314_143022_log.log`
+
+Final report statuses:
+
+- `ADDED`
+- `UPDATED`
+- `NONE`
+- `SKIPPED`
+- `ERROR`
+- `ORPHAN`
+- `INSTALLED`
+- `ALREADY_PRESENT`
+
+## Security
+
+- Secrets are sourced from environment variables and/or `.env`.
+- Secrets are redacted from logs and console output.
+- Do not commit `.env`.
+
+## Testing
+
+```powershell
+Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force
+Import-Module Pester -MinimumVersion 5.0
+Invoke-Pester -Path ./tests/
+```
+
+## Troubleshooting
+
+- `Configuration file not found: ...config/config.json`: create the file from template or run `pwsh .\scripts\setup-config-interactive.ps1`, then retry.
+- `Environment file not found: .../.env`: create `.env` from `.env.example` unless all required tokens are already set as environment variables.
+- `GITHUB_TOKEN is not set and .env file is missing: ...`: create `.env` from `.env.example`, then set `GITHUB_TOKEN`.
+- `GITHUB_TOKEN is defined in .env but empty.`: assign a non-empty token.
+- `GITHUB_TOKEN is not set in .env or environment variables.`: define token in `.env` or at user/machine level.
+- `AZURE_DEVOPS_PAT is not set and .env file is missing: ...`: create `.env` from `.env.example`, then set `AZURE_DEVOPS_PAT`.
+- `AZURE_DEVOPS_PAT is defined in .env but empty.`: assign a non-empty PAT.
+- `AZURE_DEVOPS_PAT is not set in .env or environment variables.`: define PAT in `.env` or at user/machine level.
+- `No DevOps organization resolved. Configure AZURE_DEVOPS_ORGS.`: set `AZURE_DEVOPS_ORGS` in environment or `.env`.
+- `No supported package manager detected`: install a supported package manager for your OS.
+- `Docker daemon is not available`: start Docker service.
+- Final report includes a `Recommended next steps` section when known `ERROR` patterns are detected.
+- `winget ... failed with exit code -1978335189 (0x8A15002B)`: usually source/agreement issue. Run `winget source reset --force`, `winget source update`, then `winget list --accept-source-agreements`.
+- `winget ... failed with exit code -1978334975 (0x8A150101)`: possible package/source metadata conflict. Run `winget show --id <packageId> --exact`, then retry.
+
+## Known Limitations
+
+- macOS is not fully supported for automated installation paths.
+- DevOps cross-organization discovery depends on configured organization scope.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

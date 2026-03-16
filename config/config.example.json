@@ -1,0 +1,59 @@
+{
+  "general": {
+    "logDirectory": "log",
+    "failFast": false,
+    "silent": false,
+    "debug": false,
+    "noConfirm": false,
+    "force": false
+  },
+  "modules": {
+    "appInstaller": {
+      "enabled": true,
+      "force": false,
+      "recommendedApps": {
+        "winget": true,
+        "nvmWindows": true,
+        "notepadplusplus": true,
+        "python31012": true,
+        "vscode": true
+      },
+      "optionalApps": {
+        "githubCopilot": false,
+        "githubDesktop": false,
+        "inkscape": false,
+        "pythonLatest": false,
+        "teamviewer": false
+      }
+    },
+    "github": {
+      "enabled": false,
+      "path": "D:\\GitHub",
+      "usersInclude": ["*"],
+      "usersExclude": [],
+      "organizationsInclude": ["*"],
+      "organizationsExclude": [],
+      "setFolderIcon": true,
+      "retryCount": 3,
+      "retryDelaySeconds": 5
+    },
+    "devops": {
+      "enabled": false,
+      "path": "D:\\DevOps",
+      "projectsInclude": ["*"],
+      "projectsExclude": [],
+      "includeWikis": false,
+      "setFolderIcon": true,
+      "retryCount": 3,
+      "retryDelaySeconds": 5
+    },
+    "acr": {
+      "enabled": false,
+      "tenantId": "",
+      "registries": ["myregistry"],
+      "images": ["myapp:latest"],
+      "retryCount": 3,
+      "retryDelaySeconds": 10
+    }
+  }
+}
