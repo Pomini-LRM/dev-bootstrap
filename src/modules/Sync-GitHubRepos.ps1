@@ -73,6 +73,8 @@ function Invoke-GitHubSync {
         return $results
     }
 
+    $gitHubUsername = if (-not [string]::IsNullOrWhiteSpace([string]$authResult.Login)) { [string]$authResult.Login } else { 'git' }
+
     $retryCount = if ($moduleConfig.retryCount) { [int]$moduleConfig.retryCount } else { 3 }
     $retryDelay = if ($moduleConfig.retryDelaySeconds) { [int]$moduleConfig.retryDelaySeconds } else { 5 }
 
@@ -112,11 +114,11 @@ function Invoke-GitHubSync {
             New-Item -Path $ownerPath -ItemType Directory -Force | Out-Null
         }
 
-        $cloneUrl = $repo.clone_url -replace '^https://', "https://x-access-token:$token@"
+        $cloneUrl = [string]$repo.clone_url
         Write-Log -Level Info -Message "Repository [$repoIndex/$totalRepos]: $repoLabel"
 
         try {
-            $gitResult = Invoke-GitCloneOrPull -CloneUrl $cloneUrl -DestinationPath $repoPath
+            $gitResult = Invoke-GitCloneOrPull -CloneUrl $cloneUrl -DestinationPath $repoPath -GitHubToken $token -GitHubUsername $gitHubUsername
             $repoTimer.Stop()
             $entry = New-ReportEntry -Module 'GitHub' -Item $relativeName -Status $gitResult.Status -Message $gitResult.Message -Duration $repoTimer.Elapsed
             $results.Add($entry)
@@ -320,7 +322,7 @@ function Test-GitHubTokenAccess {
             $scopes = Get-HttpHeaderValue -Headers $response.Headers -Name 'X-OAuth-Scopes'
             $requestId = Get-HttpHeaderValue -Headers $response.Headers -Name 'X-GitHub-Request-Id'
             Write-Log -Level Info -Message "GitHub auth validated for user '$([string]$me.login)'. scopes='$scopes'; requestId='$requestId'"
-            return @{ IsValid = $true; Message = 'OK'; Diagnostics = '' }
+            return @{ IsValid = $true; Message = 'OK'; Diagnostics = ''; Login = [string]$me.login }
         }
 
         return @{ IsValid = $false; Message = 'GITHUB_TOKEN validation failed: GitHub did not return the authenticated user profile.'; Diagnostics = 'GitHub /user endpoint returned an empty profile payload.' }

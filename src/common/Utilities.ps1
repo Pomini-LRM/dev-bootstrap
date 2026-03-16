@@ -141,10 +141,19 @@ function Invoke-GitCloneOrPull {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$CloneUrl,
-        [Parameter(Mandatory)][string]$DestinationPath
+        [Parameter(Mandatory)][string]$DestinationPath,
+        [string]$GitHubToken,
+        [string]$GitHubUsername = 'git'
     )
 
     $safeUrl = $CloneUrl -replace 'https://[^\s:@/]+:[^\s@/]+@', 'https://***:***@'
+    $gitAuthConfigArgs = @()
+    if (-not [string]::IsNullOrWhiteSpace($GitHubToken) -and $CloneUrl -match '^https://github\.com/') {
+        $credentials = "${GitHubUsername}:$GitHubToken"
+        $basicAuth = [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($credentials))
+        $gitAuthConfigArgs = @('-c', "http.https://github.com/.extraheader=AUTHORIZATION: basic $basicAuth")
+    }
+
     $previousTerminalPrompt = [System.Environment]::GetEnvironmentVariable('GIT_TERMINAL_PROMPT', 'Process')
     $previousGcmInteractive = [System.Environment]::GetEnvironmentVariable('GCM_INTERACTIVE', 'Process')
     $previousGcmDisabled = [System.Environment]::GetEnvironmentVariable('GCM_DISABLED', 'Process')
@@ -164,7 +173,16 @@ function Invoke-GitCloneOrPull {
             $startLocation = Get-Location
             try {
                 Set-Location -LiteralPath $DestinationPath
-                $pullOutput = & git -c credential.interactive=never -c credential.helper= -c core.askPass= pull --ff-only $CloneUrl 2>&1
+                $pullArgs = @(
+                    '-c', 'credential.interactive=never'
+                    '-c', 'credential.helper='
+                    '-c', 'core.askPass='
+                )
+                if ($gitAuthConfigArgs.Count -gt 0) {
+                    $pullArgs += $gitAuthConfigArgs
+                }
+                $pullArgs += @('pull', '--ff-only', $CloneUrl)
+                $pullOutput = & git @pullArgs 2>&1
                 $pullText = $pullOutput -join "`n"
                 $summary = Get-GitOutputSummary -Output $pullOutput
 
@@ -190,7 +208,16 @@ function Invoke-GitCloneOrPull {
             New-Item -Path $parentDirectory -ItemType Directory -Force | Out-Null
         }
 
-        $cloneOutput = & git -c credential.interactive=never -c credential.helper= -c core.askPass= clone $CloneUrl $DestinationPath 2>&1
+        $cloneArgs = @(
+            '-c', 'credential.interactive=never'
+            '-c', 'credential.helper='
+            '-c', 'core.askPass='
+        )
+        if ($gitAuthConfigArgs.Count -gt 0) {
+            $cloneArgs += $gitAuthConfigArgs
+        }
+        $cloneArgs += @('clone', $CloneUrl, $DestinationPath)
+        $cloneOutput = & git @cloneArgs 2>&1
         $summary = Get-GitOutputSummary -Output $cloneOutput
         if ($LASTEXITCODE -eq 0) {
             return @{ Status = 'ADDED'; Message = "Repository cloned. $summary" }

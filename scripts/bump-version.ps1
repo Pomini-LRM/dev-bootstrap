@@ -50,7 +50,7 @@ function Get-CurrentVersion {
     param([Parameter(Mandatory)][string]$Path)
 
     if (-not (Test-Path -LiteralPath $Path)) {
-        return '0.0.0'
+        return @{ Version = '0.0.0'; Date = '' }
     }
 
     try {
@@ -61,11 +61,12 @@ function Get-CurrentVersion {
         }
 
         $version = [string]$data.version
+        $date = if ($data.ContainsKey('date')) { [string]$data.date } else { '' }
         if ([string]::IsNullOrWhiteSpace($version)) {
             throw 'Version value is empty.'
         }
 
-        return $version.Trim()
+        return @{ Version = $version.Trim(); Date = $date }
     }
     catch {
         throw "Unable to read version file '$Path': $_"
@@ -76,15 +77,18 @@ function Set-VersionFile {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)][string]$Version
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][string]$Date
     )
 
-    $payload = [ordered]@{ version = $Version }
+    $payload = [ordered]@{ version = $Version; date = $Date }
     $payload | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Path -Encoding utf8
 }
 
-$currentVersion = Get-CurrentVersion -Path $versionPath
-$parts = ConvertFrom-SemVerString -Version $currentVersion
+ $current = Get-CurrentVersion -Path $versionPath
+ $currentVersion = $current.Version
+ $currentDate = $current.Date
+ $parts = ConvertFrom-SemVerString -Version $currentVersion
 
 switch ($Part) {
     'major' {
@@ -103,12 +107,16 @@ switch ($Part) {
 
 $newVersion = ConvertTo-SemVerString -Parts $parts
 
-Write-Host "Current version: $currentVersion"
-Write-Host "Next version   : $newVersion"
+# (version and next-version printed below with date)
 
 if ($PrintOnly) {
     return
 }
 
-Set-VersionFile -Path $versionPath -Version $newVersion
+$today = (Get-Date).ToString('yyyy-MM-dd')
+$currentDateDisplay = if (-not [string]::IsNullOrWhiteSpace($currentDate)) { "($currentDate)" } else { '' }
+Write-Host "Current version: $currentVersion $currentDateDisplay"
+Write-Host "Next version   : $newVersion ($today)"
+
+Set-VersionFile -Path $versionPath -Version $newVersion -Date $today
 Write-Host "Updated version file: $versionPath" -ForegroundColor Green

@@ -16,9 +16,13 @@ function Get-DevBootstrapVersion {
     try {
         $raw = Get-Content -LiteralPath $versionFile -Raw -Encoding utf8
         $data = $raw | ConvertFrom-Json -AsHashtable -Depth 5
-        $version = [string]$data.version
+        $version = if ($data.ContainsKey('version')) { [string]$data.version } else { '' }
+        $date = if ($data.ContainsKey('date')) { [string]$data.date } else { '' }
         if ([string]::IsNullOrWhiteSpace($version)) {
             return '0.0.0-local'
+        }
+        if (-not [string]::IsNullOrWhiteSpace($date)) {
+            return "$($version.Trim()) ($date)"
         }
         return $version.Trim()
     }
