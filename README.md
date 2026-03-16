@@ -9,7 +9,6 @@ Cross-platform environment bootstrap suite for PowerShell 7+.
 - [dev-bootstrap](#dev-bootstrap)
   - [Table of Contents](#table-of-contents)
   - [Overview](#overview)
-  - [Project Structure](#project-structure)
   - [Execution Prerequisites](#execution-prerequisites)
   - [First-Time Setup](#first-time-setup)
     - [Windows](#windows)
@@ -28,8 +27,8 @@ Cross-platform environment bootstrap suite for PowerShell 7+.
   - [Token Guides](#token-guides)
   - [Logging and Report](#logging-and-report)
   - [Security](#security)
-  - [Testing](#testing)
   - [Troubleshooting](#troubleshooting)
+  - [Developer Documentation](#developer-documentation)
   - [Known Limitations](#known-limitations)
   - [License](#license)
 
@@ -48,41 +47,6 @@ The tool is idempotent and intended for both:
 
 - Initial workstation bootstrap.
 - Ongoing update/sync runs.
-
-## Project Structure
-
-```text
-dev-bootstrap/
-├── dev-bootstrap.ps1
-├── src/
-│   ├── common/
-│   │   ├── Config.ps1
-│   │   ├── Logger.ps1
-│   │   ├── Platform.ps1
-│   │   ├── Report.ps1
-│   │   └── Utilities.ps1
-│   ├── modules/
-│   │   ├── Install-Apps.ps1
-│   │   ├── Sync-GitHubRepos.ps1
-│   │   ├── Sync-DevOpsRepos.ps1
-│   │   └── Sync-AcrImages.ps1
-│   └── orchestrator/
-│       └── Invoke-DevBootstrap.ps1
-├── scripts/
-│   ├── install-prerequisites-windows.ps1
-│   ├── install-prerequisites-linux.sh
-│   ├── bump-version.ps1
-│   └── setup-config-interactive.ps1
-├── config/
-│   ├── config.example.json
-│   ├── version.json
-│   └── appinstaller.catalog.json
-├── docs/
-│   ├── github-classic-token.md
-│   ├── azure-devops-pat.md
-│   └── developer-versioning.md
-└── tests/
-```
 
 ## Execution Prerequisites
 
@@ -258,22 +222,25 @@ The complete app metadata (`wingetId`, `linuxPackage`, `linuxCommand`) is stored
 
 - `config/appinstaller.catalog.json`
 
-In `config/config.json`, app toggles are stored under `optionalApps` for both recommended and optional apps:
+In `config/config.json`, app toggles are split into `recommendedApps` and `optionalApps`:
 
 ```json
 "appInstaller": {
   "enabled": true,
   "force": false,
-  "optionalApps": {
+  "recommendedApps": {
     "winget": true,
     "nvmWindows": true,
     "notepadplusplus": true,
     "python31012": true,
-    "vscode": true,
+    "vscode": true
+  },
+  "optionalApps": {
     "githubCopilot": false,
     "githubDesktop": false,
     "inkscape": false,
-    "pythonLatest": false
+    "pythonLatest": false,
+    "teamviewer": false
   }
 }
 ```
@@ -332,6 +299,7 @@ Developer-only version management and release notes are documented here:
   - `githubDesktop`
   - `inkscape`
   - `pythonLatest`
+  - `teamviewer`
 
 `force` behavior and precedence:
 
@@ -393,14 +361,6 @@ Final report statuses:
 - Secrets are redacted from logs and console output.
 - Do not commit `.env`.
 
-## Testing
-
-```powershell
-Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force
-Import-Module Pester -MinimumVersion 5.0
-Invoke-Pester -Path ./tests/
-```
-
 ## Troubleshooting
 
 - `Configuration file not found: ...config/config.json`: create the file from template or run `pwsh .\scripts\setup-config-interactive.ps1`, then retry.
@@ -414,9 +374,20 @@ Invoke-Pester -Path ./tests/
 - `No DevOps organization resolved. Configure AZURE_DEVOPS_ORGS.`: set `AZURE_DEVOPS_ORGS` in environment or `.env`.
 - `No supported package manager detected`: install a supported package manager for your OS.
 - `Docker daemon is not available`: start Docker service.
+- `Git Credential Manager` prompt appears during `github` sync:
+  - run with `-NoConfirm` to avoid confirmation pauses,
+  - clear process-scoped overrides before run: `[System.Environment]::SetEnvironmentVariable('GITHUB_TOKEN',$null,'Process')`,
+  - verify the token loaded by the script via log line `GitHub token diagnostics`.
 - Final report includes a `Recommended next steps` section when known `ERROR` patterns are detected.
 - `winget ... failed with exit code -1978335189 (0x8A15002B)`: usually source/agreement issue. Run `winget source reset --force`, `winget source update`, then `winget list --accept-source-agreements`.
 - `winget ... failed with exit code -1978334975 (0x8A150101)`: possible package/source metadata conflict. Run `winget show --id <packageId> --exact`, then retry.
+
+## Developer Documentation
+
+For contributors and maintainers:
+
+- Versioning workflow: `docs/developer-versioning.md`
+- App catalog authoring (where to find `wingetId`, `linuxPackage`, `linuxCommand`): `docs/developer-app-catalog.md`
 
 ## Known Limitations
 

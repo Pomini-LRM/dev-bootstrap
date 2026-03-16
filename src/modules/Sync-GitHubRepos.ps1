@@ -83,39 +83,54 @@ function Invoke-GitHubSync {
     }
 
     $expected = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $knownRemote = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $totalRepos = @($repos).Count
+    $repoIndex = 0
 
     foreach ($repo in $repos) {
+        $repoIndex++
         $owner = $repo.owner.login
         $repoName = $repo.name
+        $relativeName = "$owner/$repoName"
+        $repoLabel = "$owner - $repoName"
+        $knownRemote.Add($relativeName) | Out-Null
 
         if (-not (Test-GitHubRepoIncluded -Repo $repo -Config $moduleConfig)) {
-            $results.Add((New-ReportEntry -Module 'GitHub' -Item "$owner/$repoName" -Status 'SKIPPED' -Message 'Filtered by usersInclude/usersExclude or organizationsInclude/organizationsExclude'))
+            Write-Log -Level Info -Message "Repository [$repoIndex/$totalRepos]: $repoLabel"
+            $entry = New-ReportEntry -Module 'GitHub' -Item $relativeName -Status 'SKIPPED' -Message 'Filtered by usersInclude/usersExclude or organizationsInclude/organizationsExclude'
+            $results.Add($entry)
+            Write-GitHubRepoEntryLog -Entry $entry
             continue
         }
 
         $repoTimer = [System.Diagnostics.Stopwatch]::StartNew()
         $ownerPath = Join-Path $targetRoot $owner
         $repoPath = Join-Path $ownerPath $repoName
-        $expected.Add("$owner/$repoName") | Out-Null
+        $expected.Add($relativeName) | Out-Null
 
         if (-not (Test-Path -LiteralPath $ownerPath)) {
             New-Item -Path $ownerPath -ItemType Directory -Force | Out-Null
         }
 
         $cloneUrl = $repo.clone_url -replace '^https://', "https://x-access-token:$token@"
+        Write-Log -Level Info -Message "Repository [$repoIndex/$totalRepos]: $repoLabel"
 
         try {
-            $status = Invoke-GitCloneOrPull -CloneUrl $cloneUrl -DestinationPath $repoPath
+            $gitResult = Invoke-GitCloneOrPull -CloneUrl $cloneUrl -DestinationPath $repoPath
             $repoTimer.Stop()
-            $results.Add((New-ReportEntry -Module 'GitHub' -Item "$owner/$repoName" -Status $status -Duration $repoTimer.Elapsed))
+            $entry = New-ReportEntry -Module 'GitHub' -Item $relativeName -Status $gitResult.Status -Message $gitResult.Message -Duration $repoTimer.Elapsed
+            $results.Add($entry)
+            Write-GitHubRepoEntryLog -Entry $entry
         }
         catch {
             $repoTimer.Stop()
-            $results.Add((New-ReportEntry -Module 'GitHub' -Item "$owner/$repoName" -Status 'ERROR' -Message "$_" -Duration $repoTimer.Elapsed))
+            $entry = New-ReportEntry -Module 'GitHub' -Item $relativeName -Status 'ERROR' -Message "$_" -Duration $repoTimer.Elapsed
+            $results.Add($entry)
+            Write-GitHubRepoEntryLog -Entry $entry
         }
     }
 
-    Add-GitHubOrphanEntries -TargetRoot $targetRoot -Expected $expected -Results $results
+    Add-GitHubOrphanEntries -TargetRoot $targetRoot -Expected $expected -KnownRemote $knownRemote -Results $results
 
     if ($moduleConfig.setFolderIcon) {
         if (Test-IsWindows) {
@@ -145,11 +160,16 @@ function Get-AllVisibleGitHubRepos {
         $url = "https://api.github.com/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&per_page=$perPage&page=$page&sort=full_name"
         Write-Log -Level Info -Message "GitHub API request: GET /user/repos page=$page per_page=$perPage"
 
-        $items = Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "GitHub page $page" -ScriptBlock {
-            Invoke-RestMethod -Uri $url -Headers $Headers -Method GET -ResponseHeadersVariable 'responseHeaders'
+        $response = Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "GitHub page $page" -ScriptBlock {
+            Invoke-WebRequest -Uri $url -Headers $Headers -Method GET
         }
 
-        $requestId = Get-HttpHeaderValue -Headers $responseHeaders -Name 'X-GitHub-Request-Id'
+        $items = @()
+        if ($null -ne $response -and -not [string]::IsNullOrWhiteSpace([string]$response.Content)) {
+            $items = @($response.Content | ConvertFrom-Json)
+        }
+
+        $requestId = Get-HttpHeaderValue -Headers $response.Headers -Name 'X-GitHub-Request-Id'
         $itemsCount = @($items).Count
         Write-Log -Level Info -Message "GitHub API response: page=$page count=$itemsCount requestId='$requestId'"
 
@@ -261,6 +281,7 @@ function Add-GitHubOrphanEntries {
     param(
         [Parameter(Mandatory)][string]$TargetRoot,
         [Parameter(Mandatory)][System.Collections.Generic.HashSet[string]]$Expected,
+        [Parameter(Mandatory)][System.Collections.Generic.HashSet[string]]$KnownRemote,
         [Parameter(Mandatory)][System.Collections.Generic.List[hashtable]]$Results
     )
 
@@ -273,8 +294,15 @@ function Add-GitHubOrphanEntries {
         $repoDirs = Get-ChildItem -LiteralPath $ownerDir.FullName -Directory -ErrorAction SilentlyContinue
         foreach ($repoDir in $repoDirs) {
             $relative = "$($ownerDir.Name)/$($repoDir.Name)"
+            if ($KnownRemote.Contains($relative)) {
+                continue
+            }
+
             if (-not $Expected.Contains($relative)) {
-                $Results.Add((New-ReportEntry -Module 'GitHub' -Item $relative -Status 'ORPHAN' -Message 'Local repository does not exist remotely for current scope'))
+                Write-Log -Level Info -Message "Repository [local-only]: $relative"
+                $entry = New-ReportEntry -Module 'GitHub' -Item $relative -Status 'ORPHAN' -Message 'Local repository does not exist remotely on GitHub.'
+                $Results.Add($entry)
+                Write-GitHubRepoEntryLog -Entry $entry
             }
         }
     }
@@ -423,4 +451,30 @@ function Get-HttpHeaderValue {
     catch {}
 
     return ''
+}
+
+function Write-GitHubRepoEntryLog {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$Entry)
+
+    $level = if ($Entry.Status -eq 'ERROR') { 'Error' } else { 'Info' }
+    $durationText = if ($Entry.Duration -gt [TimeSpan]::Zero) { " ($($Entry.Duration.ToString('hh\:mm\:ss')))" } else { '' }
+    $actionText = if ([string]::IsNullOrWhiteSpace([string]$Entry.Message)) { Get-GitHubActionFromStatus -Status ([string]$Entry.Status) } else { [string]$Entry.Message }
+
+    Write-Log -Level $level -Message "  Action: $actionText"
+    Write-Log -Level $level -Message "  Status: $($Entry.Status)$durationText"
+}
+
+function Get-GitHubActionFromStatus {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Status)
+
+    switch ($Status.ToUpperInvariant()) {
+        'ADDED' { return 'Repository cloned.' }
+        'UPDATED' { return 'Repository updated.' }
+        'NONE' { return 'Repository already up to date.' }
+        'SKIPPED' { return 'Repository skipped.' }
+        'ERROR' { return 'Repository sync failed.' }
+        default { return 'Repository sync completed.' }
+    }
 }

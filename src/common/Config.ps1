@@ -88,6 +88,7 @@ function Read-DevBootstrapConfig {
         throw "Invalid JSON configuration in '$Path': $_"
     }
 
+    $loaded = Normalize-AppInstallerAppSelectionConfig -Config $loaded
     $merged = Merge-Hashtable -Default $defaults -Override $loaded
     $merged = Normalize-AppInstallerAppSelectionConfig -Config $merged
     $errors = @(Test-DevBootstrapConfig -Config $merged)
@@ -243,14 +244,14 @@ function Normalize-AppInstallerAppSelectionConfig {
 
     $recommendedKeys = @('winget', 'nvmWindows', 'notepadplusplus', 'python31012', 'vscode')
     foreach ($key in $recommendedKeys) {
+        if ($appInstaller.optionalApps.ContainsKey($key)) {
+            $appInstaller.recommendedApps[$key] = [bool]$appInstaller.optionalApps[$key]
+            $appInstaller.optionalApps.Remove($key)
+            continue
+        }
+
         if (-not $appInstaller.recommendedApps.ContainsKey($key)) {
-            if ($appInstaller.optionalApps.ContainsKey($key)) {
-                $appInstaller.recommendedApps[$key] = [bool]$appInstaller.optionalApps[$key]
-                $appInstaller.optionalApps.Remove($key)
-            }
-            else {
-                $appInstaller.recommendedApps[$key] = $true
-            }
+            $appInstaller.recommendedApps[$key] = $true
         }
     }
 

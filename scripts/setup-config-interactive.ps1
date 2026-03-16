@@ -364,14 +364,14 @@ if ($config.modules.appInstaller.enabled) {
     }
 
     foreach ($app in @($catalog.apps | Where-Object { $_.category -eq 'recommended' })) {
+        if ($config.modules.appInstaller.optionalApps.ContainsKey($app.key)) {
+            $config.modules.appInstaller.recommendedApps[$app.key] = [bool]$config.modules.appInstaller.optionalApps[$app.key]
+            $config.modules.appInstaller.optionalApps.Remove($app.key)
+            continue
+        }
+
         if (-not $config.modules.appInstaller.recommendedApps.ContainsKey($app.key)) {
-            if ($config.modules.appInstaller.optionalApps.ContainsKey($app.key)) {
-                $config.modules.appInstaller.recommendedApps[$app.key] = [bool]$config.modules.appInstaller.optionalApps[$app.key]
-                $config.modules.appInstaller.optionalApps.Remove($app.key)
-            }
-            else {
-                $config.modules.appInstaller.recommendedApps[$app.key] = $true
-            }
+            $config.modules.appInstaller.recommendedApps[$app.key] = $true
         }
     }
 

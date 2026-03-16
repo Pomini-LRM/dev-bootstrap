@@ -68,6 +68,15 @@ Describe 'Test-DevBootstrapConfig' {
         $errors = Test-DevBootstrapConfig -Config @{ general = @{ logDirectory = 'log' } }
         $errors | Should -Contain "Missing required section 'modules'."
     }
+
+    It 'migrates legacy recommended keys from optionalApps to recommendedApps' {
+        $config = Get-DefaultConfig
+        $config.modules.appInstaller.optionalApps.vscode = $false
+        $normalized = Normalize-AppInstallerAppSelectionConfig -Config $config
+
+        $normalized.modules.appInstaller.recommendedApps.vscode | Should -BeFalse
+        $normalized.modules.appInstaller.optionalApps.ContainsKey('vscode') | Should -BeFalse
+    }
 }
 
 AfterAll {

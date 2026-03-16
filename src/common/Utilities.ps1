@@ -145,44 +145,89 @@ function Invoke-GitCloneOrPull {
     )
 
     $safeUrl = $CloneUrl -replace 'https://[^\s:@/]+:[^\s@/]+@', 'https://***:***@'
+    $previousTerminalPrompt = [System.Environment]::GetEnvironmentVariable('GIT_TERMINAL_PROMPT', 'Process')
+    $previousGcmInteractive = [System.Environment]::GetEnvironmentVariable('GCM_INTERACTIVE', 'Process')
+    $previousGcmDisabled = [System.Environment]::GetEnvironmentVariable('GCM_DISABLED', 'Process')
+    $previousGitAskPass = [System.Environment]::GetEnvironmentVariable('GIT_ASKPASS', 'Process')
+    $previousSshAskPass = [System.Environment]::GetEnvironmentVariable('SSH_ASKPASS', 'Process')
+    $previousGitConfigNoSystem = [System.Environment]::GetEnvironmentVariable('GIT_CONFIG_NOSYSTEM', 'Process')
+    [System.Environment]::SetEnvironmentVariable('GIT_TERMINAL_PROMPT', '0', 'Process')
+    [System.Environment]::SetEnvironmentVariable('GCM_INTERACTIVE', 'Never', 'Process')
+    [System.Environment]::SetEnvironmentVariable('GCM_DISABLED', '1', 'Process')
+    [System.Environment]::SetEnvironmentVariable('GIT_ASKPASS', '', 'Process')
+    [System.Environment]::SetEnvironmentVariable('SSH_ASKPASS', '', 'Process')
+    [System.Environment]::SetEnvironmentVariable('GIT_CONFIG_NOSYSTEM', '1', 'Process')
 
-    if (Test-Path (Join-Path $DestinationPath '.git')) {
-        Write-Log -Level Debug -Message "Running git pull in: $DestinationPath"
-        $startLocation = Get-Location
-        try {
-            Set-Location -LiteralPath $DestinationPath
-            $pullOutput = & git pull --ff-only 2>&1
-            $pullText = $pullOutput -join "`n"
+    try {
+        if (Test-Path (Join-Path $DestinationPath '.git')) {
+            Write-Log -Level Debug -Message "Running git pull in: $DestinationPath"
+            $startLocation = Get-Location
+            try {
+                Set-Location -LiteralPath $DestinationPath
+                $pullOutput = & git -c credential.interactive=never -c credential.helper= -c core.askPass= pull --ff-only $CloneUrl 2>&1
+                $pullText = $pullOutput -join "`n"
+                $summary = Get-GitOutputSummary -Output $pullOutput
 
-            if ($LASTEXITCODE -ne 0) {
-                Write-Log -Level Error -Message "git pull failed in ${DestinationPath}: $pullText"
-                return 'ERROR'
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Log -Level Error -Message "git pull failed in ${DestinationPath}: $pullText"
+                    return @{ Status = 'ERROR'; Message = "git pull failed. $summary" }
+                }
+
+                if ($pullText -match 'Already up to date') {
+                    return @{ Status = 'NONE'; Message = 'Already up to date.' }
+                }
+
+                return @{ Status = 'UPDATED'; Message = "Updated from remote. $summary" }
             }
-
-            if ($pullText -match 'Already up to date') {
-                return 'NONE'
+            finally {
+                Set-Location -LiteralPath $startLocation
             }
-
-            return 'UPDATED'
         }
-        finally {
-            Set-Location -LiteralPath $startLocation
+
+        Write-Log -Level Debug -Message "Running git clone: $safeUrl -> $DestinationPath"
+        $parentDirectory = Split-Path -Parent $DestinationPath
+        if (-not (Test-Path -LiteralPath $parentDirectory)) {
+            New-Item -Path $parentDirectory -ItemType Directory -Force | Out-Null
         }
+
+        $cloneOutput = & git -c credential.interactive=never -c credential.helper= -c core.askPass= clone $CloneUrl $DestinationPath 2>&1
+        $summary = Get-GitOutputSummary -Output $cloneOutput
+        if ($LASTEXITCODE -eq 0) {
+            return @{ Status = 'ADDED'; Message = "Repository cloned. $summary" }
+        }
+
+        Write-Log -Level Error -Message "git clone failed for ${safeUrl}: $($cloneOutput -join "`n")"
+        return @{ Status = 'ERROR'; Message = "git clone failed. $summary" }
+    }
+    finally {
+        [System.Environment]::SetEnvironmentVariable('GIT_TERMINAL_PROMPT', $previousTerminalPrompt, 'Process')
+        [System.Environment]::SetEnvironmentVariable('GCM_INTERACTIVE', $previousGcmInteractive, 'Process')
+        [System.Environment]::SetEnvironmentVariable('GCM_DISABLED', $previousGcmDisabled, 'Process')
+        [System.Environment]::SetEnvironmentVariable('GIT_ASKPASS', $previousGitAskPass, 'Process')
+        [System.Environment]::SetEnvironmentVariable('SSH_ASKPASS', $previousSshAskPass, 'Process')
+        [System.Environment]::SetEnvironmentVariable('GIT_CONFIG_NOSYSTEM', $previousGitConfigNoSystem, 'Process')
+    }
+}
+
+function Get-GitOutputSummary {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object[]]$Output)
+
+    foreach ($line in @($Output)) {
+        $text = [string]$line
+        if ([string]::IsNullOrWhiteSpace($text)) {
+            continue
+        }
+
+        $trimmed = $text.Trim()
+        if ($trimmed -match '^(remote:|warning:|hint:|From\s+|Cloning into\s+|Already up to date\.)') {
+            return $trimmed
+        }
+
+        return $trimmed
     }
 
-    Write-Log -Level Debug -Message "Running git clone: $safeUrl -> $DestinationPath"
-    $parentDirectory = Split-Path -Parent $DestinationPath
-    if (-not (Test-Path -LiteralPath $parentDirectory)) {
-        New-Item -Path $parentDirectory -ItemType Directory -Force | Out-Null
-    }
-
-    $cloneOutput = & git clone $CloneUrl $DestinationPath 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        return 'ADDED'
-    }
-
-    Write-Log -Level Error -Message "git clone failed for ${safeUrl}: $($cloneOutput -join "`n")"
-    return 'ERROR'
+    return 'No git output available.'
 }
 
 function Set-WindowsFolderIcon {
