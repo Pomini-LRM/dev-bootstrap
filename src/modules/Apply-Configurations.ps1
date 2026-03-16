@@ -235,6 +235,8 @@ function Set-ConfigurationDesktopLinkForApplication {
         ') else (',
         '  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev-bootstrap.ps1" %*',
         ')',
+        'echo.',
+        'pause',
         'endlocal'
     ) -join "`r`n"
 

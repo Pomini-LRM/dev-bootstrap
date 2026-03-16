@@ -6,4 +6,6 @@ if %errorlevel%==0 (
 ) else (
   powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev-bootstrap.ps1" %*
 )
+echo.
+pause
 endlocal
