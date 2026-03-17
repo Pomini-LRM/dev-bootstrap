@@ -1,4 +1,5 @@
 #Requires -Version 7.0
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 <#
 .SYNOPSIS
     Azure DevOps repository synchronization module.
@@ -12,6 +13,10 @@
 #>
 
 function Invoke-DevOpsSync {
+    <#
+    .SYNOPSIS
+        Synchronizes Azure DevOps repositories for the configured organization.
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$Config,
@@ -123,7 +128,7 @@ function Invoke-DevOpsSync {
         $itemTimer = [System.Diagnostics.Stopwatch]::StartNew()
         $expected.Add($item.Relative) | Out-Null
         try {
-            $cloneUrl = Normalize-DevOpsRemoteUrl -RemoteUrl $item.CloneUrl
+            $cloneUrl = ConvertTo-DevOpsRemoteUrl -RemoteUrl $item.CloneUrl
             $gitResult = Invoke-GitCloneOrPull -CloneUrl $cloneUrl -DestinationPath $item.DestinationPath -DevOpsPat $pat
             $itemTimer.Stop()
             $entry = New-ReportEntry -Module 'DevOps' -Item $item.Relative -Status $gitResult.Status -Message $gitResult.Message -Duration $itemTimer.Elapsed
@@ -187,7 +192,7 @@ function Resolve-DevOpsOrganizations {
     return @()
 }
 
-function Normalize-DevOpsRemoteUrl {
+function ConvertTo-DevOpsRemoteUrl {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$RemoteUrl
@@ -224,42 +229,14 @@ function Test-DevOpsIncludeExcludeMatch {
         [object[]]$ExcludeTokens = @()
     )
 
-    $include = @(Get-DevOpsNormalizedFilterTokens -Tokens $IncludeTokens)
-    $exclude = @(Get-DevOpsNormalizedFilterTokens -Tokens $ExcludeTokens)
-
-    if ($exclude -contains '*' -or $exclude -contains $Name) {
-        return $false
-    }
-
-    if ($include -contains '*') {
-        return $true
-    }
-
-    if ($include.Count -eq 0) {
-        return $false
-    }
-
-    return $include -contains $Name
+    return (Test-IncludeExcludeMatch -Name $Name -IncludeTokens $IncludeTokens -ExcludeTokens $ExcludeTokens)
 }
 
 function Get-DevOpsNormalizedFilterTokens {
     [CmdletBinding()]
     param([object[]]$Tokens)
 
-    if ($null -eq $Tokens) {
-        return @()
-    }
-
-    $result = [System.Collections.Generic.List[string]]::new()
-    foreach ($token in @($Tokens)) {
-        $normalized = [string]$token
-        $normalized = $normalized.Trim()
-        if (-not [string]::IsNullOrWhiteSpace($normalized)) {
-            $result.Add($normalized)
-        }
-    }
-
-    return $result.ToArray()
+    return @(Get-NormalizedFilterTokenSet -Tokens $Tokens)
 }
 
 function Write-DevOpsFilterAmbiguityWarnings {
@@ -270,22 +247,7 @@ function Write-DevOpsFilterAmbiguityWarnings {
         [object[]]$ExcludeTokens
     )
 
-    $include = @(Get-DevOpsNormalizedFilterTokens -Tokens $IncludeTokens)
-    $exclude = @(Get-DevOpsNormalizedFilterTokens -Tokens $ExcludeTokens)
-
-    if ($include.Count -gt 1 -and $include -contains '*') {
-        Write-Log -Level Warning -Message "$EntityLabel include list contains '*' and explicit names. Explicit names are redundant."
-    }
-
-    if ($exclude -contains '*') {
-        Write-Log -Level Warning -Message "$EntityLabel exclude list contains '*'. All matching entities will be excluded."
-    }
-
-    foreach ($token in $include) {
-        if ($exclude -contains $token) {
-            Write-Log -Level Warning -Message "$EntityLabel token '$token' is present in both include and exclude lists. Exclude wins."
-        }
-    }
+    Write-FilterAmbiguityWarning -EntityLabel $EntityLabel -IncludeTokens $IncludeTokens -ExcludeTokens $ExcludeTokens
 }
 
 function Get-DevOpsProjects {

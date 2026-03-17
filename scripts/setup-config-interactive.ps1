@@ -1,5 +1,6 @@
 #!/usr/bin/env pwsh
 #Requires -Version 7.0
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 
 <#
 .SYNOPSIS
@@ -553,3 +554,4 @@ else {
 }
 
 Write-Host "  $step ) Run: pwsh .\dev-bootstrap.ps1"
+

@@ -1,4 +1,5 @@
 #Requires -Version 5.1
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 <#
 .SYNOPSIS
     Installs minimum prerequisites to run dev-bootstrap on Windows.

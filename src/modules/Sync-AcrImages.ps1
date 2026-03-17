@@ -1,10 +1,15 @@
 #Requires -Version 7.0
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 <#
 .SYNOPSIS
     Azure Container Registry image synchronization module.
 #>
 
 function Invoke-AcrSync {
+    <#
+    .SYNOPSIS
+        Authenticates to Azure/ACR and pulls matching images.
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$Config,
@@ -73,7 +78,22 @@ function Invoke-AcrSync {
     }
 
     $registries = @($moduleConfig.registries)
+    $reachableRegistries = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
     foreach ($registry in $registries) {
+        if (Test-AcrRegistryReachable -Registry $registry -RetryCount $retryCount -RetryDelaySeconds $retryDelay) {
+            $null = $reachableRegistries.Add($registry)
+        }
+        else {
+            $results.Add((New-ReportEntry -Module 'ACR' -Item "registry:$registry" -Status 'ERROR' -Message 'Registry not reachable. Verify ACR is open and network access is available.'))
+        }
+    }
+
+    foreach ($registry in $registries) {
+        if (-not $reachableRegistries.Contains($registry)) {
+            continue
+        }
+
         try {
             Invoke-WithRetry -MaxRetries $retryCount -BaseDelaySeconds $retryDelay -OperationName "ACR login $registry" -ScriptBlock {
                 $out = & az acr login --name $registry 2>&1
@@ -103,6 +123,10 @@ function Invoke-AcrSync {
 
     if ($imagesInclude -contains '*') {
         foreach ($registry in $registries) {
+                if (-not $reachableRegistries.Contains($registry)) {
+                    continue
+                }
+
             $repoNames = @(Get-AcrRegistryRepositories -Registry $registry -RetryCount $retryCount -RetryDelaySeconds $retryDelay)
             foreach ($repoName in $repoNames) {
                 $resolvedImage = "$registry.azurecr.io/$repoName"
@@ -135,6 +159,10 @@ function Invoke-AcrSync {
             }
 
             foreach ($registry in $registries) {
+                if (-not $reachableRegistries.Contains($registry)) {
+                    continue
+                }
+
                 $resolvedImage = "$registry.azurecr.io/$includeImage"
                 if ($seen.Add($resolvedImage)) {
                     $shouldSync = Test-AcrIncludeExcludeMatch -Name $includeImage -IncludeTokens $imagesInclude -ExcludeTokens $imagesExclude
@@ -166,6 +194,28 @@ function Invoke-AcrSync {
             Write-AcrImageEntryLog -Entry $entry
             continue
         }
+
+        $registryName = [string]$item.ResolvedImage
+        if ($registryName -match '^([^\.]+)\.azurecr\.io/') {
+            $registryName = [string]$Matches[1]
+        }
+
+        if (-not $reachableRegistries.Contains($registryName)) {
+            $entry = New-ReportEntry -Module 'ACR' -Item $item.Item -Status 'SKIPPED' -Message 'Registry not reachable: freshness cannot be verified.'
+            $results.Add($entry)
+            Write-AcrImageEntryLog -Entry $entry
+            continue
+        }
+
+        $freshnessProbe = Test-AcrImageFreshnessProbe -ResolvedImage ([string]$item.ResolvedImage) -RetryCount $retryCount -RetryDelaySeconds $retryDelay
+        if (-not $freshnessProbe.IsReachable) {
+            $entry = New-ReportEntry -Module 'ACR' -Item $item.Item -Status 'SKIPPED' -Message $freshnessProbe.Message
+            $results.Add($entry)
+            Write-AcrImageEntryLog -Entry $entry
+            continue
+        }
+
+        Write-Log -Level Info -Message '  Freshness check: verified from ACR metadata.'
 
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         $resolvedImage = [string]$item.ResolvedImage
@@ -216,6 +266,106 @@ function Get-AcrRegistryRepositories {
     return @(@($raw) | ForEach-Object { [string]$_ } | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 
+function Test-AcrRegistryReachable {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Registry,
+        [int]$RetryCount = 3,
+        [int]$RetryDelaySeconds = 10
+    )
+
+    try {
+        Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "ACR check-health $Registry" -ScriptBlock {
+            $health = & az acr check-health --name $Registry --yes --ignore-errors --output json 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "Registry '$Registry' check-health failed"
+            }
+
+            $healthText = (@($health) -join "`n")
+            $hasHardHealthError = $false
+
+            foreach ($line in @($health)) {
+                $lineText = [string]$line
+                if ($lineText -match 'An error occurred:\s+(\S+)') {
+                    $code = [string]$Matches[1]
+                    if ($code -notin @('HELM_COMMAND_ERROR', 'NOTARY_COMMAND_ERROR')) {
+                        $hasHardHealthError = $true
+                        break
+                    }
+                }
+            }
+
+            if (
+                $hasHardHealthError -or
+                $healthText -notmatch 'Challenge endpoint .* : OK' -or
+                $healthText -notmatch 'Fetch access token .* : OK'
+            ) {
+                throw "Registry '$Registry' health indicates it is not open/reachable"
+            }
+        } | Out-Null
+
+        Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "ACR reachability $Registry" -ScriptBlock {
+            $null = & az acr repository list --name $Registry --top 1 --only-show-errors --output tsv 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "Registry '$Registry' not reachable"
+            }
+        } | Out-Null
+
+        return $true
+    }
+    catch {
+        Write-Log -Level Warning -Message "ACR reachability check failed for '$Registry': $_"
+        return $false
+    }
+}
+
+function Test-AcrImageFreshnessProbe {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ResolvedImage,
+        [int]$RetryCount = 3,
+        [int]$RetryDelaySeconds = 10
+    )
+
+    if ($ResolvedImage -notmatch '^(?<registry>[^\.]+)\.azurecr\.io/(?<path>.+)$') {
+        return @{
+            IsReachable = $false
+            Message = "Invalid ACR image format: $ResolvedImage"
+        }
+    }
+
+    $registry = [string]$Matches['registry']
+    $repositoryPath = [string]$Matches['path']
+
+    # Remove digest and/or tag to query repository metadata.
+    if ($repositoryPath -match '^(?<repo>.+)@sha256:[0-9a-fA-F]{64}$') {
+        $repositoryPath = [string]$Matches['repo']
+    }
+    if ($repositoryPath -match '^(?<repo>.+):[^/]+$') {
+        $repositoryPath = [string]$Matches['repo']
+    }
+
+    try {
+        Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "ACR freshness probe $ResolvedImage" -ScriptBlock {
+            $null = & az acr repository show-tags --name $registry --repository $repositoryPath --top 1 --orderby time_desc --only-show-errors --output tsv 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                throw "Unable to verify image freshness for $ResolvedImage"
+            }
+        } | Out-Null
+
+        return @{
+            IsReachable = $true
+            Message = 'Image freshness probe succeeded.'
+        }
+    }
+    catch {
+        return @{
+            IsReachable = $false
+            Message = "Registry appears closed or unreachable: freshness cannot be verified for $ResolvedImage."
+        }
+    }
+}
+
 function Test-AcrIncludeExcludeMatch {
     [CmdletBinding()]
     param(
@@ -224,42 +374,14 @@ function Test-AcrIncludeExcludeMatch {
         [object[]]$ExcludeTokens = @()
     )
 
-    $include = @(Get-AcrNormalizedFilterTokens -Tokens $IncludeTokens)
-    $exclude = @(Get-AcrNormalizedFilterTokens -Tokens $ExcludeTokens)
-
-    if ($exclude -contains '*' -or $exclude -contains $Name) {
-        return $false
-    }
-
-    if ($include -contains '*') {
-        return $true
-    }
-
-    if ($include.Count -eq 0) {
-        return $false
-    }
-
-    return $include -contains $Name
+    return (Test-IncludeExcludeMatch -Name $Name -IncludeTokens $IncludeTokens -ExcludeTokens $ExcludeTokens)
 }
 
 function Get-AcrNormalizedFilterTokens {
     [CmdletBinding()]
     param([object[]]$Tokens)
 
-    if ($null -eq $Tokens) {
-        return @()
-    }
-
-    $result = [System.Collections.Generic.List[string]]::new()
-    foreach ($token in @($Tokens)) {
-        $normalized = [string]$token
-        $normalized = $normalized.Trim()
-        if (-not [string]::IsNullOrWhiteSpace($normalized)) {
-            $result.Add($normalized)
-        }
-    }
-
-    return $result.ToArray()
+    return @(Get-NormalizedFilterTokenSet -Tokens $Tokens)
 }
 
 function Write-AcrFilterAmbiguityWarnings {
@@ -270,22 +392,7 @@ function Write-AcrFilterAmbiguityWarnings {
         [object[]]$ExcludeTokens
     )
 
-    $include = @(Get-AcrNormalizedFilterTokens -Tokens $IncludeTokens)
-    $exclude = @(Get-AcrNormalizedFilterTokens -Tokens $ExcludeTokens)
-
-    if ($include.Count -gt 1 -and $include -contains '*') {
-        Write-Log -Level Warning -Message "$EntityLabel include list contains '*' and explicit names. Explicit names are redundant."
-    }
-
-    if ($exclude -contains '*') {
-        Write-Log -Level Warning -Message "$EntityLabel exclude list contains '*'. All matching images will be excluded."
-    }
-
-    foreach ($token in $include) {
-        if ($exclude -contains $token) {
-            Write-Log -Level Warning -Message "$EntityLabel token '$token' is present in both include and exclude lists. Exclude wins."
-        }
-    }
+    Write-FilterAmbiguityWarning -EntityLabel $EntityLabel -IncludeTokens $IncludeTokens -ExcludeTokens $ExcludeTokens
 }
 
 function Write-AcrImageEntryLog {

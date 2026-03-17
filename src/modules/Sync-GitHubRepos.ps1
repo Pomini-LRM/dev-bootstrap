@@ -1,4 +1,5 @@
 #Requires -Version 7.0
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 <#
 .SYNOPSIS
     GitHub repository synchronization module.
@@ -17,6 +18,10 @@
 #>
 
 function Invoke-GitHubSync {
+    <#
+    .SYNOPSIS
+        Synchronizes GitHub repositories visible to the configured token.
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$Config,
@@ -52,8 +57,8 @@ function Invoke-GitHubSync {
         New-Item -Path $targetRoot -ItemType Directory -Force | Out-Null
     }
 
-    Write-FilterAmbiguityWarnings -EntityLabel 'GitHub users' -IncludeTokens @($moduleConfig.usersInclude) -ExcludeTokens @($moduleConfig.usersExclude)
-    Write-FilterAmbiguityWarnings -EntityLabel 'GitHub organizations' -IncludeTokens @($moduleConfig.organizationsInclude) -ExcludeTokens @($moduleConfig.organizationsExclude)
+    Write-FilterAmbiguityWarning -EntityLabel 'GitHub users' -IncludeTokens @($moduleConfig.usersInclude) -ExcludeTokens @($moduleConfig.usersExclude)
+    Write-FilterAmbiguityWarning -EntityLabel 'GitHub organizations' -IncludeTokens @($moduleConfig.organizationsInclude) -ExcludeTokens @($moduleConfig.organizationsExclude)
 
     $headers = @{
         Authorization = "Bearer $token"
@@ -216,78 +221,6 @@ function Test-GitHubRepoIncluded {
     }
 
     return Test-IncludeExcludeMatch -Name $owner -IncludeTokens @($Config.usersInclude) -ExcludeTokens @($Config.usersExclude)
-}
-
-function Test-IncludeExcludeMatch {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string]$Name,
-        [object[]]$IncludeTokens = @('*'),
-        [object[]]$ExcludeTokens = @()
-    )
-
-    $include = @(Get-NormalizedFilterTokens -Tokens $IncludeTokens)
-    $exclude = @(Get-NormalizedFilterTokens -Tokens $ExcludeTokens)
-
-    if ($exclude -contains '*' -or $exclude -contains $Name) {
-        return $false
-    }
-
-    if ($include -contains '*') {
-        return $true
-    }
-
-    if ($include.Count -eq 0) {
-        return $false
-    }
-
-    return $include -contains $Name
-}
-
-function Get-NormalizedFilterTokens {
-    [CmdletBinding()]
-    param([object[]]$Tokens)
-
-    if ($null -eq $Tokens) {
-        return @()
-    }
-
-    $result = [System.Collections.Generic.List[string]]::new()
-    foreach ($token in @($Tokens)) {
-        $normalized = [string]$token
-        $normalized = $normalized.Trim()
-        if (-not [string]::IsNullOrWhiteSpace($normalized)) {
-            $result.Add($normalized)
-        }
-    }
-
-    return $result.ToArray()
-}
-
-function Write-FilterAmbiguityWarnings {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)][string]$EntityLabel,
-        [object[]]$IncludeTokens,
-        [object[]]$ExcludeTokens
-    )
-
-    $include = @(Get-NormalizedFilterTokens -Tokens $IncludeTokens)
-    $exclude = @(Get-NormalizedFilterTokens -Tokens $ExcludeTokens)
-
-    if ($include.Count -gt 1 -and $include -contains '*') {
-        Write-Log -Level Warning -Message "$EntityLabel include list contains '*' and explicit names. Explicit names are redundant."
-    }
-
-    if ($exclude -contains '*') {
-        Write-Log -Level Warning -Message "$EntityLabel exclude list contains '*'. All matching entities will be excluded."
-    }
-
-    foreach ($token in $include) {
-        if ($exclude -contains $token) {
-            Write-Log -Level Warning -Message "$EntityLabel token '$token' is present in both include and exclude lists. Exclude wins."
-        }
-    }
 }
 
 function Add-GitHubOrphanEntries {

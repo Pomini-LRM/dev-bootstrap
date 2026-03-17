@@ -1,4 +1,5 @@
 #Requires -Version 7.0
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 <#
 .SYNOPSIS
     Centralized configuration management for dev-bootstrap.
@@ -84,6 +85,14 @@ function Get-DefaultConfig {
 }
 
 function Read-DevBootstrapConfig {
+    <#
+    .SYNOPSIS
+        Loads, normalizes, merges, and validates dev-bootstrap configuration.
+    .PARAMETER Path
+        Path to the JSON config file.
+    .OUTPUTS
+        hashtable
+    #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path)
 
@@ -96,17 +105,26 @@ function Read-DevBootstrapConfig {
 
     try {
         $raw = Get-Content -LiteralPath $Path -Raw -Encoding utf8
+
+        $schemaPath = Join-Path (Split-Path -Parent $Path) 'config.schema.json'
+        if ((Test-Path -LiteralPath $schemaPath) -and (Get-Command -Name Test-Json -ErrorAction SilentlyContinue)) {
+            $isSchemaValid = Test-Json -Json $raw -SchemaFile $schemaPath
+            if (-not $isSchemaValid) {
+                throw "Configuration file does not match schema '$schemaPath'."
+            }
+        }
+
         $loaded = $raw | ConvertFrom-Json -AsHashtable -Depth 30
     }
     catch {
         throw "Invalid JSON configuration in '$Path': $_"
     }
 
-    $loaded = Normalize-AppInstallerAppSelectionConfig -Config $loaded
-    $loaded = Normalize-AcrImageFilterConfig -Config $loaded
+    $loaded = ConvertTo-AppInstallerAppSelectionConfig -Config $loaded
+    $loaded = ConvertTo-AcrImageFilterConfig -Config $loaded
     $merged = Merge-Hashtable -Default $defaults -Override $loaded
-    $merged = Normalize-AppInstallerAppSelectionConfig -Config $merged
-    $merged = Normalize-AcrImageFilterConfig -Config $merged
+    $merged = ConvertTo-AppInstallerAppSelectionConfig -Config $merged
+    $merged = ConvertTo-AcrImageFilterConfig -Config $merged
     $errors = @(Test-DevBootstrapConfig -Config $merged)
     if ($errors.Count -gt 0) {
         throw ("Configuration validation failed:`n" + ($errors -join "`n"))
@@ -255,7 +273,7 @@ function Test-DevBootstrapConfig {
     return @($errors)
 }
 
-function Normalize-AppInstallerAppSelectionConfig {
+function ConvertTo-AppInstallerAppSelectionConfig {
     [CmdletBinding()]
     param([Parameter(Mandatory)][hashtable]$Config)
 
@@ -297,7 +315,7 @@ function Normalize-AppInstallerAppSelectionConfig {
     return $Config
 }
 
-function Normalize-AcrImageFilterConfig {
+function ConvertTo-AcrImageFilterConfig {
     [CmdletBinding()]
     param([Parameter(Mandatory)][hashtable]$Config)
 

@@ -4,6 +4,7 @@
 BeforeAll {
     $projectRoot = Split-Path -Parent $PSScriptRoot
     . (Join-Path $projectRoot 'src' 'common' 'Logger.ps1')
+    . (Join-Path $projectRoot 'src' 'common' 'Filters.ps1')
     . (Join-Path $projectRoot 'src' 'common' 'Utilities.ps1')
     . (Join-Path $projectRoot 'src' 'modules' 'Sync-GitHubRepos.ps1')
     . (Join-Path $projectRoot 'src' 'modules' 'Sync-DevOpsRepos.ps1')

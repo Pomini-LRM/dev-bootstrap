@@ -1,10 +1,15 @@
 #Requires -Version 7.0
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 <#
 .SYNOPSIS
     Version helpers for dev-bootstrap.
 #>
 
 function Get-DevBootstrapVersion {
+    <#
+    .SYNOPSIS
+        Returns current dev-bootstrap version string from version.json.
+    #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$ProjectRoot)
 

@@ -81,7 +81,7 @@ Describe 'Test-DevBootstrapConfig' {
     It 'migrates legacy recommended keys from optionalApps to recommendedApps' {
         $config = Get-DefaultConfig
         $config.modules.appInstaller.optionalApps.vscode = $false
-        $normalized = Normalize-AppInstallerAppSelectionConfig -Config $config
+        $normalized = ConvertTo-AppInstallerAppSelectionConfig -Config $config
 
         $normalized.modules.appInstaller.recommendedApps.vscode | Should -BeFalse
         $normalized.modules.appInstaller.optionalApps.ContainsKey('vscode') | Should -BeFalse
@@ -96,7 +96,7 @@ Describe 'Test-DevBootstrapConfig' {
             }
         }
 
-        $normalized = Normalize-AcrImageFilterConfig -Config $config
+        $normalized = ConvertTo-AcrImageFilterConfig -Config $config
         $normalized.modules.acr.imagesInclude | Should -Be @('plrm-vscode')
         $normalized.modules.acr.imagesExclude | Should -Be @()
         $normalized.modules.acr.ContainsKey('images') | Should -BeFalse

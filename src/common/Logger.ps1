@@ -1,4 +1,5 @@
 #Requires -Version 7.0
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 <#
 .SYNOPSIS
     Persistent logging for dev-bootstrap.
@@ -9,12 +10,17 @@
 #>
 
 $script:_LogFilePath = $null
+$script:_LogWriter = $null
 $script:_LogLevel = 'Info'
 $script:_LogSilent = $false
 $script:_LogLevelMap = @{ 'Debug' = 0; 'Info' = 1; 'Warning' = 2; 'Error' = 3 }
 $script:_StepTimers = @{}
 
 function Initialize-Logger {
+    <#
+    .SYNOPSIS
+        Initializes file and console logging for the current run.
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
@@ -35,7 +41,13 @@ function Initialize-Logger {
     $script:_LogLevel = $Level
     $script:_LogSilent = $Silent.IsPresent
 
-    $null = New-Item -Path $script:_LogFilePath -ItemType File -Force
+    if ($script:_LogWriter) {
+        $script:_LogWriter.Dispose()
+        $script:_LogWriter = $null
+    }
+
+    $script:_LogWriter = [System.IO.StreamWriter]::new($script:_LogFilePath, $false, [System.Text.Encoding]::UTF8)
+    $script:_LogWriter.AutoFlush = $true
 
     Write-Log -Level Info -Message '============================================='
     Write-Log -Level Info -Message 'dev-bootstrap - Logging initialized'
@@ -49,6 +61,10 @@ function Initialize-Logger {
 }
 
 function Write-Log {
+    <#
+    .SYNOPSIS
+        Writes a sanitized log entry to console and log file.
+    #>
     [CmdletBinding()]
     param(
         [ValidateSet('Debug', 'Info', 'Warning', 'Error')]
@@ -76,7 +92,10 @@ function Write-Log {
         }
     }
 
-    if ($script:_LogFilePath) {
+    if ($script:_LogWriter) {
+        $script:_LogWriter.WriteLine($entry)
+    }
+    elseif ($script:_LogFilePath) {
         $entry | Out-File -FilePath $script:_LogFilePath -Append -Encoding utf8
     }
 }

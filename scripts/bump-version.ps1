@@ -1,5 +1,6 @@
 #!/usr/bin/env pwsh
 #Requires -Version 7.0
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 
 <#
 .SYNOPSIS
@@ -22,6 +23,7 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $versionPath = Join-Path $projectRoot 'config' 'version.json'
+$moduleManifestPath = Join-Path $projectRoot 'DevBootstrap.psd1'
 
 function ConvertFrom-SemVerString {
     [CmdletBinding()]
@@ -85,6 +87,22 @@ function Set-VersionFile {
     $payload | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $Path -Encoding utf8
 }
 
+function Set-ModuleManifestVersion {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Version
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    $raw = Get-Content -LiteralPath $Path -Raw -Encoding utf8
+    $updated = [regex]::Replace($raw, "(?m)^\s*ModuleVersion\s*=\s*'.*?'", "    ModuleVersion        = '$Version'")
+    Set-Content -LiteralPath $Path -Value $updated -Encoding utf8
+}
+
  $current = Get-CurrentVersion -Path $versionPath
  $currentVersion = $current.Version
  $currentDate = $current.Date
@@ -120,3 +138,9 @@ Write-Host "Next version   : $newVersion ($today)"
 
 Set-VersionFile -Path $versionPath -Version $newVersion -Date $today
 Write-Host "Updated version file: $versionPath" -ForegroundColor Green
+
+Set-ModuleManifestVersion -Path $moduleManifestPath -Version $newVersion
+if (Test-Path -LiteralPath $moduleManifestPath) {
+    Write-Host "Updated module manifest: $moduleManifestPath" -ForegroundColor Green
+}
+

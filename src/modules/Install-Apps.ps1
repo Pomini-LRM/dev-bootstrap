@@ -1,4 +1,5 @@
 #Requires -Version 7.0
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 <#
 .SYNOPSIS
     Application installation module.
@@ -11,6 +12,18 @@
 #>
 
 function Invoke-AppInstaller {
+    <#
+    .SYNOPSIS
+        Installs required and selected applications for the current platform.
+    .PARAMETER Config
+        Resolved dev-bootstrap configuration hashtable.
+    .PARAMETER ProjectRoot
+        Repository root path used to resolve catalogs and resources.
+    .PARAMETER Force
+        Enables forced reinstall/upgrade behavior where supported.
+    .OUTPUTS
+        System.Collections.Generic.List[hashtable]
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$Config,
@@ -340,12 +353,12 @@ function Install-ViaWinget {
         }
 
         if (Test-WingetNoUpgradeAvailableOutput -Output $upgradeResult.Output) {
-            $existingVersionInfo = Normalize-AlreadyPresentVersionInfo -VersionInfo (Get-WindowsAppVersionInfo -App $App)
+            $existingVersionInfo = ConvertTo-AlreadyPresentVersionInfo -VersionInfo (Get-WindowsAppVersionInfo -App $App)
             return @{ Status = 'ALREADY_PRESENT'; Message = (Format-WingetVersionMessage -BaseMessage 'Already up to date (winget)' -VersionInfo $existingVersionInfo) }
         }
 
         if (Test-WingetAlreadyInstalledOutput -Output $upgradeResult.Output) {
-            $existingVersionInfo = Normalize-AlreadyPresentVersionInfo -VersionInfo (Get-WindowsAppVersionInfo -App $App)
+            $existingVersionInfo = ConvertTo-AlreadyPresentVersionInfo -VersionInfo (Get-WindowsAppVersionInfo -App $App)
             return @{ Status = 'ALREADY_PRESENT'; Message = (Format-WingetVersionMessage -BaseMessage 'Already installed (winget)' -VersionInfo $existingVersionInfo) }
         }
 
@@ -363,7 +376,7 @@ function Install-ViaWinget {
     }
 
     if (Test-WingetAlreadyInstalledOutput -Output $installResult.Output) {
-        $existingVersionInfo = Normalize-AlreadyPresentVersionInfo -VersionInfo (Get-WindowsAppVersionInfo -App $App)
+        $existingVersionInfo = ConvertTo-AlreadyPresentVersionInfo -VersionInfo (Get-WindowsAppVersionInfo -App $App)
 
         $upgradeResult = Invoke-WingetUpgradeWithRetry -App $App -AppId $appId
         if ($upgradeResult.ExitCode -eq 0) {
@@ -521,7 +534,7 @@ function Convert-WingetListLineToVersionInfo {
         LatestVersion = ''
     }
 
-    $cleanLine = Normalize-WingetOutputText -Text $Line
+    $cleanLine = ConvertTo-NormalizedWingetOutput -Text $Line
 
     if ([string]::IsNullOrWhiteSpace($cleanLine) -or $cleanLine -notmatch [regex]::Escape($AppId)) {
         if ($AppId -eq 'Notepad++.Notepad++' -and $cleanLine -match '(?i)notepad\+\+' -and $cleanLine -match '(?i)notepad\+\+.*?([0-9]+\.[0-9]+(?:\.[0-9]+)?)') {
@@ -582,7 +595,7 @@ function Convert-WingetListLineToVersionInfo {
     }
 }
 
-function Normalize-WingetOutputText {
+function ConvertTo-NormalizedWingetOutput {
     [CmdletBinding()]
     param([AllowNull()][AllowEmptyString()][string]$Text)
 
@@ -911,7 +924,7 @@ function Test-ShouldUpgradeInstalledApp {
     return $current -ne $latest
 }
 
-function Normalize-AlreadyPresentVersionInfo {
+function ConvertTo-AlreadyPresentVersionInfo {
     [CmdletBinding()]
     param([Parameter(Mandatory)][hashtable]$VersionInfo)
 
@@ -1172,6 +1185,11 @@ function Install-LinuxApp {
 
     if (-not $packageName) {
         return @{ Status = 'SKIPPED'; Message = 'linuxPackage not configured' }
+    }
+
+    # Security hardening: avoid shell injection when package name comes from catalog JSON.
+    if ([string]$packageName -notmatch '^[a-zA-Z0-9][a-zA-Z0-9._:+-]*$') {
+        return @{ Status = 'ERROR'; Message = "Invalid Linux package name rejected: $packageName" }
     }
 
     $installCommand = switch ($PackageManager.Name) {

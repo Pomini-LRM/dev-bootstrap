@@ -178,7 +178,7 @@ Describe 'Winget diagnostics helpers' {
     }
 
     It 'normalizes already-present info when install was detected by output only' {
-        $normalized = Normalize-AlreadyPresentVersionInfo -VersionInfo @{
+        $normalized = ConvertTo-AlreadyPresentVersionInfo -VersionInfo @{
             IsInstalled = $false
             CurrentVersion = ''
             LatestVersion = ''

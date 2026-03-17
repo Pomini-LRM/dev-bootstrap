@@ -22,6 +22,7 @@ Cross-platform environment bootstrap suite for PowerShell 7+.
   - [Run Modes](#run-modes)
   - [Modules](#modules)
     - [appInstaller](#appinstaller)
+    - [configurations](#configurations)
     - [github](#github)
     - [devops](#devops)
     - [acr](#acr)
@@ -85,6 +86,11 @@ Copy-Item .\.env.example .\.env
 pwsh .\dev-bootstrap.ps1
 ```
 
+Execution policy note:
+
+- `dev-bootstrap-launcher.cmd` uses `-ExecutionPolicy Bypass` for bootstrap convenience.
+- In enterprise environments, prefer invoking with PowerShell 7 directly and stricter policy (for example `RemoteSigned`) when governance requires it.
+
 Interactive wizard notes:
 
 - In module selection, use arrow keys to move, space to select/unselect, enter to confirm.
@@ -126,6 +132,11 @@ Interactive alternative:
 ```powershell
 pwsh .\scripts\setup-config-interactive.ps1
 ```
+
+Schema support:
+
+- JSON Schema is available at `config/config.schema.json`.
+- You can reference it from config files with `"$schema": "./config.schema.json"` to enable editor validation.
 
 The interactive wizard supports incremental updates:
 
@@ -216,7 +227,7 @@ Behavior:
 ```json
 "acr": {
   "enabled": true,
-  "registries": ["acrpominishareddev"],
+  "registries": ["youracr"],
   "imagesInclude": ["*"],
   "imagesExclude": [],
   "retryCount": 3,
@@ -251,11 +262,12 @@ In `config/config.json`, app toggles are split into `recommendedApps` and `optio
   "enabled": true,
   "force": false,
   "recommendedApps": {
-    "winget": true,
-    "nvmWindows": true,
+    "gnuWin32Make": true,
     "notepadplusplus": true,
+    "nvmWindows": true,
     "python31012": true,
-    "vscode": true
+    "vscode": true,
+    "winget": true
   },
   "optionalApps": {
     "githubCopilot": false,
@@ -311,11 +323,12 @@ Developer-only version management and release notes are documented here:
 - `-Force` remains available for package managers/scenarios that require forced reinstall behavior.
 - Enforces module-required apps for enabled modules.
 - Recommended app toggles:
-  - `winget`
-  - `nvmWindows`
+  - `gnuWin32Make`
   - `notepadplusplus`
+  - `nvmWindows`
   - `python31012`
   - `vscode`
+  - `winget`
 - Optional app toggles:
   - `githubCopilot`
   - `githubDesktop`
@@ -331,6 +344,16 @@ Developer-only version management and release notes are documented here:
   - CLI `-Force`
   - `general.force`
   - `modules.appInstaller.force`
+
+### configurations
+
+- Applies local workstation configuration tasks defined in `config/configurations.catalog.json`.
+- Supported actions:
+  - add `GnuWin32\bin` to user `PATH`
+  - copy VS Code Copilot Chat keybindings template
+  - set global git user name/email
+  - create desktop shortcut for `dev-bootstrap`
+- Runs idempotently with `UPDATED`, `NONE`, `SKIPPED`, `ERROR` statuses.
 
 ### github
 
@@ -353,9 +376,13 @@ Developer-only version management and release notes are documented here:
 
 ## Token Guides
 
-- GitHub token guide: [docs/github-classic-token.md](docs/github-classic-token.md)
-- Azure DevOps PAT guide: [docs/azure-devops-pat.md](docs/azure-devops-pat.md)
-- ACR authentication guide (interactive, no app registration): [docs/acr-authentication.md](docs/acr-authentication.md)
+- GitHub module: configure `GITHUB_TOKEN` (see [docs/github-classic-token.md](docs/github-classic-token.md)).
+- DevOps module: configure `AZURE_DEVOPS_PAT` and `AZURE_DEVOPS_ORGS` (see [docs/azure-devops-pat.md](docs/azure-devops-pat.md)).
+- ACR module (this project): configure only `AZURE_TENANT_ID`.
+  - Ask your IT Admin for the correct tenant id.
+  - No client id/secret is required by this project.
+  - The application will request Azure login whenever needed.
+  - Details: [docs/acr-authentication.md](docs/acr-authentication.md)
 
 ## Logging and Report
 
@@ -411,6 +438,8 @@ For contributors and maintainers:
 
 - Versioning workflow: `docs/developer-versioning.md`
 - App catalog authoring (where to find `wingetId`, `linuxPackage`, `linuxCommand`): `docs/developer-app-catalog.md`
+- CI quality gates: `.github/workflows/ci.yml`
+- Static analysis policy: `PSScriptAnalyzerSettings.psd1`
 
 ## Known Limitations
 

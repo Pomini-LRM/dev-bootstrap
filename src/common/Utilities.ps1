@@ -1,10 +1,15 @@
 #Requires -Version 7.0
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 <#
 .SYNOPSIS
     Shared utility helpers for dev-bootstrap.
 #>
 
 function Invoke-WithRetry {
+    <#
+    .SYNOPSIS
+        Executes an operation with exponential backoff retry.
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][scriptblock]$ScriptBlock,
@@ -33,6 +38,10 @@ function Invoke-WithRetry {
 }
 
 function Import-EnvFile {
+    <#
+    .SYNOPSIS
+        Imports non-empty key=value pairs from a .env file into Process scope.
+    #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path)
 
@@ -113,6 +122,10 @@ function Get-EnvFileVariableState {
 }
 
 function Get-SecureEnvVariable {
+    <#
+    .SYNOPSIS
+        Reads an environment variable from Process, User, then Machine scope.
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -331,29 +344,7 @@ function Set-WindowsFolderIcon {
         $iconResource = $IconFile
         $isIcoFile = $IconFile.ToLowerInvariant().EndsWith('.ico')
         if ($isIcoFile) {
-            $iconCandidatePaths = [System.Collections.Generic.List[string]]::new()
-
-            if ([System.IO.Path]::IsPathRooted($IconFile)) {
-                $iconCandidatePaths.Add($IconFile)
-            }
-            else {
-                if (-not [string]::IsNullOrWhiteSpace($ProjectRoot)) {
-                    $iconCandidatePaths.Add((Join-Path $ProjectRoot 'config' 'icons' $IconFile))
-                    $iconCandidatePaths.Add((Join-Path $ProjectRoot 'icons' $IconFile))
-                }
-
-                $localRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-                $iconCandidatePaths.Add((Join-Path $localRoot 'config' 'icons' $IconFile))
-                $iconCandidatePaths.Add((Join-Path $localRoot 'icons' $IconFile))
-            }
-
-            $sourceIconPath = $null
-            foreach ($candidate in $iconCandidatePaths) {
-                if (Test-Path -LiteralPath $candidate) {
-                    $sourceIconPath = $candidate
-                    break
-                }
-            }
+            $sourceIconPath = Find-WindowsIconPath -IconFile $IconFile -ProjectRoot $ProjectRoot
 
             if (-not $sourceIconPath) {
                 throw "Icon file '$IconFile' not found in repository icon folders."
@@ -382,4 +373,36 @@ IconResource=$iconResource,$IconIndex
     catch {
         Write-Log -Level Warning -Message "Unable to set folder icon for ${FolderPath}: $_"
     }
+}
+
+function Find-WindowsIconPath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$IconFile,
+        [string]$ProjectRoot
+    )
+
+    $iconCandidatePaths = [System.Collections.Generic.List[string]]::new()
+
+    if ([System.IO.Path]::IsPathRooted($IconFile)) {
+        $iconCandidatePaths.Add($IconFile)
+    }
+    else {
+        if (-not [string]::IsNullOrWhiteSpace($ProjectRoot)) {
+            $iconCandidatePaths.Add((Join-Path $ProjectRoot 'config' 'icons' $IconFile))
+            $iconCandidatePaths.Add((Join-Path $ProjectRoot 'icons' $IconFile))
+        }
+
+        $localRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        $iconCandidatePaths.Add((Join-Path $localRoot 'config' 'icons' $IconFile))
+        $iconCandidatePaths.Add((Join-Path $localRoot 'icons' $IconFile))
+    }
+
+    foreach ($candidate in $iconCandidatePaths) {
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+
+    return $null
 }

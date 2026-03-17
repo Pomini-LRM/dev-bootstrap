@@ -1,10 +1,15 @@
 #Requires -Version 7.0
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 <#
 .SYNOPSIS
     Local machine configuration module.
 #>
 
 function Invoke-Configurations {
+    <#
+    .SYNOPSIS
+        Applies selected local workstation configurations.
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$Config,

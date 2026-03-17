@@ -1,10 +1,15 @@
 #Requires -Version 7.0
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 <#
 .SYNOPSIS
     Main orchestrator for dev-bootstrap.
 #>
 
 function Invoke-DevBootstrap {
+    <#
+    .SYNOPSIS
+        Executes selected dev-bootstrap modules and aggregates final reporting.
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$Config,
@@ -95,6 +100,8 @@ function Invoke-DevBootstrap {
                 Status = 'SKIPPED'
                 Items = 0
                 Errors = 0
+                InsUpd = 0
+                PresSkp = 0
                 Duration = [TimeSpan]::Zero
             })
             continue
@@ -106,6 +113,8 @@ function Invoke-DevBootstrap {
         $moduleStatus = 'SUCCESS'
         $moduleItemCount = 0
         $moduleErrorCount = 0
+        $moduleInsUpdCount = 0
+        $modulePresSkpCount = 0
         $stepDuration = [TimeSpan]::Zero
 
         try {
@@ -127,6 +136,8 @@ function Invoke-DevBootstrap {
             }
 
             $moduleErrorCount = @($moduleResultList | Where-Object { $_.Status -eq 'ERROR' }).Count
+            $moduleInsUpdCount = @($moduleResultList | Where-Object { $_.Status -in @('INSTALLED', 'UPDATED') }).Count
+            $modulePresSkpCount = @($moduleResultList | Where-Object { $_.Status -in @('ALREADY_PRESENT', 'SKIPPED') }).Count
             if ($moduleErrorCount -gt 0) {
                 $moduleStatus = 'ERROR'
                 Write-Log -Level Warning -Message "Module $($module.Label) completed with $moduleErrorCount errors."
@@ -150,6 +161,8 @@ function Invoke-DevBootstrap {
             Status = $moduleStatus
             Items = $moduleItemCount
             Errors = $moduleErrorCount
+            InsUpd = $moduleInsUpdCount
+            PresSkp = $modulePresSkpCount
             Duration = $stepDuration
         })
     }
@@ -210,8 +223,8 @@ function Write-ModuleExecutionSummary {
     $rows = @($ModuleExecutions)
     Write-Log -Level Info -Message ''
     Write-Log -Level Info -Message 'Module execution summary:'
-    Write-Log -Level Info -Message '  MODULE                 STATUS      ITEMS  ERRORS  DURATION'
-    Write-Log -Level Info -Message '  ---------------------  ----------  -----  ------  ------------'
+    Write-Log -Level Info -Message '  MODULE                 STATUS      ITEMS  ERRORS  INS/UPD  PRES/SKP  DURATION'
+    Write-Log -Level Info -Message '  ---------------------  ----------  -----  ------  -------  --------  ------------'
 
     foreach ($row in $rows) {
         $durationText = [TimeSpan]$row.Duration
@@ -219,7 +232,9 @@ function Write-ModuleExecutionSummary {
         $statusText = ([string]$row.Status).PadRight(10)
         $itemsText = ([string]$row.Items).PadLeft(5)
         $errorsText = ([string]$row.Errors).PadLeft(6)
-        Write-Log -Level Info -Message "  $moduleText  $statusText  $itemsText  $errorsText  $($durationText.ToString('hh\:mm\:ss'))"
+        $insUpdText = ([string]$row.InsUpd).PadLeft(7)
+        $presSkpText = ([string]$row.PresSkp).PadLeft(8)
+        Write-Log -Level Info -Message "  $moduleText  $statusText  $itemsText  $errorsText  $insUpdText  $presSkpText  $($durationText.ToString('hh\:mm\:ss'))"
     }
 
     $totalDurationText = if ($TotalDuration.TotalHours -ge 1) {
@@ -233,5 +248,7 @@ function Write-ModuleExecutionSummary {
     $totalStatusText = ''.PadRight(10)
     $totalItemsText = ([string]$TotalOperations).PadLeft(5)
     $totalErrorsText = ([string]$ErrorCount).PadLeft(6)
-    Write-Log -Level Info -Message "  $totalModuleText  $totalStatusText  $totalItemsText  $totalErrorsText  $totalDurationText"
+    $totalInsUpd = ([string](@($rows | Measure-Object -Property InsUpd -Sum).Sum)).PadLeft(7)
+    $totalPresSkp = ([string](@($rows | Measure-Object -Property PresSkp -Sum).Sum)).PadLeft(8)
+    Write-Log -Level Info -Message "  $totalModuleText  $totalStatusText  $totalItemsText  $totalErrorsText  $totalInsUpd  $totalPresSkp  $totalDurationText"
 }

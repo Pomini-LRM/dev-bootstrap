@@ -1,5 +1,6 @@
 #!/usr/bin/env pwsh
 #Requires -Version 7.0
+# Copyright (c) 2026 POMINI Long Rolling Mills. Licensed under the MIT License.
 
 <#
 .SYNOPSIS
@@ -50,6 +51,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 
 . (Join-Path $projectRoot 'src' 'common' 'Logger.ps1')
+. (Join-Path $projectRoot 'src' 'common' 'Filters.ps1')
 . (Join-Path $projectRoot 'src' 'common' 'Config.ps1')
 . (Join-Path $projectRoot 'src' 'common' 'Platform.ps1')
 . (Join-Path $projectRoot 'src' 'common' 'Report.ps1')

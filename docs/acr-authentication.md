@@ -1,51 +1,39 @@
-# ACR Authentication (No App Registration Required)
+# ACR Authentication (dev-bootstrap)
 
-This guide describes the supported ACR authentication flow for `dev-bootstrap` without app registrations or client secrets.
+This document contains only the ACR authentication requirements used by this project.
 
-## How It Works
+## Required Variable
 
-The `acr` module uses interactive user authentication.
-
-For interactive mode, the flow is:
-
-1. Check current Azure CLI session (`az account show`).
-2. If already logged in on the target tenant, reuse the session.
-3. Otherwise run `az login --tenant <tenantId> --allow-no-subscriptions`.
-4. Run `az acr login --name <registry>` and then pull images.
-
-This matches the legacy behavior while avoiding repeated login prompts when an Azure CLI session is already active.
-
-## Minimal Setup
-
-Set only tenant and registry/image configuration. No client secret is required.
+Set only this variable in `.env`:
 
 ```dotenv
 AZURE_TENANT_ID=<tenant-id>
 ```
 
-## Run
+How to get it:
+
+- Ask your IT Admin for the Azure tenant id to use with this project.
+
+## Prerequisite
+
+- The target ACR must be open/reachable before running the script.
+- If your organization uses an open/close process (for example a temporary network rule or pipeline), ensure the ACR is opened first.
+
+## Runtime Behavior
+
+- No client id/secret is required by this project.
+- The application uses interactive Azure login for ACR operations.
+- If your session is missing or expired, the application will request login when needed.
+
+## Run ACR Module
 
 ```powershell
 pwsh ./dev-bootstrap.ps1 -RunMode acr
 ```
-
-If no valid Azure CLI session exists for the configured tenant, a login popup/device flow is expected.
-
-## Optional: Keep Login Prompt on Every Run
-
-If you want to force a fresh login every execution, clear the Azure CLI account cache before running:
-
-```powershell
-az account clear
-pwsh ./dev-bootstrap.ps1 -RunMode acr
-```
-
-## Required Permissions
-
-The signed-in user must have permission on the target ACR (for example `AcrPull`).
 
 ## Troubleshooting
 
-- Wrong tenant selected: set `AZURE_TENANT_ID` to the required tenant.
-- ACR access denied: verify RBAC on the registry for your user.
-- Docker errors: ensure Docker Desktop/daemon is running.
+- Login prompt appears: expected when a valid Azure session is not available.
+- Wrong tenant: verify `AZURE_TENANT_ID` with IT Admin.
+- ACR access denied: ask IT Admin to verify your RBAC permissions (for example `AcrPull`).
+- Registry not reachable: verify the ACR is open and reachable on network before rerunning.

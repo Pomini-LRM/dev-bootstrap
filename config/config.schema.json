@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/dev-bootstrap/config.schema.json",
+  "title": "dev-bootstrap config",
+  "type": "object",
+  "required": ["general", "modules"],
+  "properties": {
+    "general": {
+      "type": "object",
+      "required": ["logDirectory", "failFast", "silent", "debug", "noConfirm", "force"],
+      "properties": {
+        "logDirectory": { "type": "string", "minLength": 1 },
+        "failFast": { "type": "boolean" },
+        "silent": { "type": "boolean" },
+        "debug": { "type": "boolean" },
+        "noConfirm": { "type": "boolean" },
+        "force": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "modules": {
+      "type": "object",
+      "required": ["appInstaller", "configurations", "github", "devops", "acr"],
+      "properties": {
+        "appInstaller": { "type": "object" },
+        "configurations": { "type": "object" },
+        "github": { "type": "object" },
+        "devops": { "type": "object" },
+        "acr": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "registries": { "type": "array", "items": { "type": "string" } },
+            "imagesInclude": { "type": "array", "items": { "type": "string" } },
+            "imagesExclude": { "type": "array", "items": { "type": "string" } },
+            "retryCount": { "type": "integer", "minimum": 0 },
+            "retryDelaySeconds": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
