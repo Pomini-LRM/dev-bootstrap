@@ -231,30 +231,8 @@ function Set-ConfigurationDesktopLinkForApplication {
     }
 
     $launcherPath = Join-Path $ProjectRoot 'dev-bootstrap-launcher.cmd'
-    $launcherContent = @(
-        '@echo off',
-        'setlocal',
-        'where pwsh >nul 2>nul',
-        'if %errorlevel%==0 (',
-        '  pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev-bootstrap.ps1" %*',
-        ') else (',
-        '  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev-bootstrap.ps1" %*',
-        ')',
-        'echo.',
-        'pause',
-        'endlocal'
-    ) -join "`r`n"
-
-    $writeLauncher = $true
-    if (Test-Path -LiteralPath $launcherPath) {
-        $existingLauncher = Get-Content -LiteralPath $launcherPath -Raw -Encoding ascii
-        if ($existingLauncher -eq $launcherContent) {
-            $writeLauncher = $false
-        }
-    }
-
-    if ($writeLauncher) {
-        Set-Content -LiteralPath $launcherPath -Value $launcherContent -Encoding ascii -Force
+    if (-not (Test-Path -LiteralPath $launcherPath)) {
+        return @{ Status = 'ERROR'; Message = "Launcher not found: $launcherPath" }
     }
 
     $shell = New-Object -ComObject WScript.Shell
