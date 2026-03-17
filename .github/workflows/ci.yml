@@ -1,49 +1,237 @@
+# =============================================================================
+# CI — Lint (PSScriptAnalyzer) + Test (Pester) for dev-bootstrap
+# Required-check for branch protection: "CI Status"
+# =============================================================================
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  lint-and-test:
-    runs-on: windows-latest
+  # ---------------------------------------------------------------------------
+  # Detect whether source/test files changed (docs-only PRs skip lint & test)
+  # ---------------------------------------------------------------------------
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code || 'true' }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - 'tests/**'
+              - 'scripts/**'
+              - '*.ps1'
+              - '*.psm1'
+              - '*.psd1'
+              - '.github/workflows/**'
+              - '.github/linters/**'
+              - 'config/**'
+
+  # ---------------------------------------------------------------------------
+  # PSScriptAnalyzer Lint
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Install PSScriptAnalyzer
         shell: pwsh
-        run: Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force
 
-      - name: Lint
+      - name: Run PSScriptAnalyzer
         shell: pwsh
         run: |
-          $results = Invoke-ScriptAnalyzer -Path ./src, ./scripts, ./dev-bootstrap.ps1 -Recurse -Settings ./PSScriptAnalyzerSettings.psd1
-          $results | Format-Table -AutoSize
-          if ($results | Where-Object Severity -eq 'Error') {
-            throw 'PSScriptAnalyzer found errors.'
+          $settingsPath = '.github/linters/PSScriptAnalyzerSettings.psd1'
+          $scanPaths    = @('src', 'tests')
+          $allResults   = [System.Collections.Generic.List[object]]::new()
+
+          foreach ($p in $scanPaths) {
+              $allResults.AddRange(@(Invoke-ScriptAnalyzer -Path $p -Recurse -Settings $settingsPath))
           }
+
+          # ── Console output ────────────────────────────────────────────────
+          if ($allResults.Count -gt 0) {
+              $allResults | Format-Table Severity, RuleName, ScriptName, Line, Message -AutoSize -Wrap
+          }
+          else {
+              Write-Host 'No issues found.' -ForegroundColor Green
+          }
+
+          # ── Severity counts ───────────────────────────────────────────────
+          $errors   = @($allResults | Where-Object Severity -eq 'Error')
+          $warnings = @($allResults | Where-Object Severity -eq 'Warning')
+          $info     = @($allResults | Where-Object Severity -eq 'Information')
+
+          # ── Scanned file count ────────────────────────────────────────────
+          $fileCount = (Get-ChildItem -Path $scanPaths -Recurse -Include '*.ps1','*.psm1','*.psd1' | Measure-Object).Count
+
+          # ── Step Summary ──────────────────────────────────────────────────
+          $md = [System.Text.StringBuilder]::new()
+          [void]$md.AppendLine('## PSScriptAnalyzer Results')
+          [void]$md.AppendLine()
+          [void]$md.AppendLine('| Severity | Count |')
+          [void]$md.AppendLine('|----------|------:|')
+          [void]$md.AppendLine("| Error | $($errors.Count) |")
+          [void]$md.AppendLine("| Warning | $($warnings.Count) |")
+          [void]$md.AppendLine("| Information | $($info.Count) |")
+          [void]$md.AppendLine()
+          [void]$md.AppendLine("**PowerShell:** $($PSVersionTable.PSVersion)")
+          [void]$md.AppendLine("**Settings:** ``$settingsPath``")
+          [void]$md.AppendLine("**Files analysed:** $fileCount")
+          [void]$md.AppendLine()
+
+          if ($allResults.Count -gt 0) {
+              [void]$md.AppendLine('<details><summary>Top 20 issues</summary>')
+              [void]$md.AppendLine()
+              [void]$md.AppendLine('| Rule | File | Line | Severity |')
+              [void]$md.AppendLine('|------|------|-----:|----------|')
+              foreach ($r in ($allResults | Select-Object -First 20)) {
+                  [void]$md.AppendLine("| ``$($r.RuleName)`` | ``$($r.ScriptName)`` | $($r.Line) | $($r.Severity) |")
+              }
+              [void]$md.AppendLine()
+              [void]$md.AppendLine('</details>')
+          }
+          else {
+              [void]$md.AppendLine('Clean — no issues found.')
+          }
+
+          $md.ToString() >> $env:GITHUB_STEP_SUMMARY
+
+          # ── Fail on errors ────────────────────────────────────────────────
+          if ($errors.Count -gt 0) {
+              Write-Error "PSScriptAnalyzer found $($errors.Count) error-level issue(s)."
+              exit 1
+          }
+
+  # ---------------------------------------------------------------------------
+  # Pester Tests (matrix: Ubuntu + Windows)
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Install Pester
         shell: pwsh
-        run: Install-Module -Name Pester -MinimumVersion 5.0 -Force -Scope CurrentUser
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force
 
-      - name: Run tests
+      - name: Run Pester
+        id: pester
         shell: pwsh
         run: |
-          $config = New-PesterConfiguration
-          $config.Run.Path = './tests'
-          $config.Output.Verbosity = 'Detailed'
-          $config.TestResult.Enabled = $true
-          $config.TestResult.OutputPath = 'testResults.xml'
-          $config.TestResult.OutputFormat = 'NUnitXml'
-          Invoke-Pester -Configuration $config
+          $cfg = New-PesterConfiguration
+          $cfg.Run.Path          = './tests'
+          $cfg.Run.PassThru      = $true
+          $cfg.Output.Verbosity  = 'Detailed'
+          $cfg.TestResult.Enabled      = $true
+          $cfg.TestResult.OutputPath   = 'testResults.xml'
+          $cfg.TestResult.OutputFormat = 'NUnitXml'
+
+          $result = Invoke-Pester -Configuration $cfg
+
+          # ── Pester summary file (artifact) ────────────────────────────────
+          @(
+              'Pester Test Summary'
+              '==================='
+              "Total:    $($result.TotalCount)"
+              "Passed:   $($result.PassedCount)"
+              "Failed:   $($result.FailedCount)"
+              "Skipped:  $($result.SkippedCount)"
+              "Duration: $($result.Duration)"
+          ) | Out-File 'pester-summary.txt'
+
+          if ($result.FailedCount -gt 0) {
+              '' | Out-File 'pester-summary.txt' -Append
+              'Failed tests:' | Out-File 'pester-summary.txt' -Append
+              $result.Failed | ForEach-Object {
+                  "  - $($_.ExpandedPath)" | Out-File 'pester-summary.txt' -Append
+              }
+          }
+
+          # ── Step Summary ──────────────────────────────────────────────────
+          $md = [System.Text.StringBuilder]::new()
+          [void]$md.AppendLine('## Pester Results')
+          [void]$md.AppendLine()
+          [void]$md.AppendLine('| Metric | Value |')
+          [void]$md.AppendLine('|--------|------:|')
+          [void]$md.AppendLine("| Total | $($result.TotalCount) |")
+          [void]$md.AppendLine("| Passed | $($result.PassedCount) |")
+          [void]$md.AppendLine("| Failed | $($result.FailedCount) |")
+          [void]$md.AppendLine("| Skipped | $($result.SkippedCount) |")
+          [void]$md.AppendLine("| Duration | $($result.Duration) |")
+          [void]$md.AppendLine()
+          [void]$md.AppendLine("**PowerShell:** $($PSVersionTable.PSVersion)")
+          [void]$md.AppendLine("**Report:** ``testResults.xml``")
+          $md.ToString() >> $env:GITHUB_STEP_SUMMARY
+
+          # ── Fail if tests failed ──────────────────────────────────────────
+          if ($result.FailedCount -gt 0) {
+              exit 1
+          }
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-${{ matrix.os }}
           path: testResults.xml
+          retention-days: 30
+
+      - name: Upload Pester output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pester-output-${{ matrix.os }}
+          path: pester-summary.txt
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Gate job for branch protection (always reports, even on docs-only changes)
+  # ---------------------------------------------------------------------------
+  ci-status:
+    name: CI Status
+    if: always()
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate
+        shell: bash
+        run: |
+          for result in "${{ needs.lint.result }}" "${{ needs.test.result }}"; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::CI job reported: $result"; exit 1 ;;
+            esac
+          done
+          echo "All CI checks passed or were skipped (docs-only change)."

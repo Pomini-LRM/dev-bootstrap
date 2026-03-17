@@ -1,0 +1,186 @@
+# =============================================================================
+# Release — Build distribution ZIP and publish GitHub Release on tag push
+# Trigger: git tag -a v1.7.0 -m "v1.7.0" && git push origin v1.7.0
+# =============================================================================
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint (gate)
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $results = @(Invoke-ScriptAnalyzer -Path src, tests -Recurse `
+              -Settings .github/linters/PSScriptAnalyzerSettings.psd1)
+          $results | Format-Table Severity, RuleName, ScriptName, Line, Message -AutoSize -Wrap
+          $errors = @($results | Where-Object Severity -eq 'Error')
+          if ($errors.Count -gt 0) {
+              Write-Error "PSScriptAnalyzer found $($errors.Count) error(s)."
+              exit 1
+          }
+
+  # ---------------------------------------------------------------------------
+  # Test (gate — matrix)
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pester
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -MinimumVersion 5.0 -Scope CurrentUser -Force
+
+      - name: Run Pester
+        shell: pwsh
+        run: |
+          $cfg = New-PesterConfiguration
+          $cfg.Run.Path          = './tests'
+          $cfg.Run.PassThru      = $true
+          $cfg.Output.Verbosity  = 'Detailed'
+          $cfg.TestResult.Enabled      = $true
+          $cfg.TestResult.OutputPath   = 'testResults.xml'
+          $cfg.TestResult.OutputFormat = 'NUnitXml'
+
+          $result = Invoke-Pester -Configuration $cfg
+          if ($result.FailedCount -gt 0) { exit 1 }
+
+  # ---------------------------------------------------------------------------
+  # Build ZIP + Create GitHub Release
+  # ---------------------------------------------------------------------------
+  release:
+    name: Release
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect module manifest
+        id: manifest
+        shell: pwsh
+        run: |
+          $manifests = @(Get-ChildItem -Path . -Filter '*.psd1' -Recurse -File |
+              Where-Object {
+                  $_.FullName -notmatch '[/\\]\.github[/\\]' -and
+                  $_.Name -ne 'PSScriptAnalyzerSettings.psd1'
+              })
+
+          if ($manifests.Count -eq 0) {
+              Write-Error 'No .psd1 module manifest found in repository.'
+              exit 1
+          }
+          if ($manifests.Count -gt 1) {
+              $names = ($manifests | ForEach-Object { $_.FullName }) -join ', '
+              Write-Error "Expected 1 module manifest, found $($manifests.Count): $names"
+              exit 1
+          }
+
+          $m = $manifests[0]
+          Write-Host "Module manifest : $($m.FullName)"
+          Write-Host "Module name     : $($m.BaseName)"
+          "module_name=$($m.BaseName)"     >> $env:GITHUB_OUTPUT
+          "module_dir=$($m.DirectoryName)" >> $env:GITHUB_OUTPUT
+
+      - name: Build distribution ZIP
+        id: build
+        shell: pwsh
+        run: |
+          $tag        = '${{ github.ref_name }}'
+          $moduleName = '${{ steps.manifest.outputs.module_name }}'
+          $moduleDir  = '${{ steps.manifest.outputs.module_dir }}'
+          $zipName    = "dev-bootstrap-${tag}.zip"
+          $staging    = Join-Path $env:RUNNER_TEMP 'staging' 'dev-bootstrap'
+
+          New-Item $staging -ItemType Directory -Force | Out-Null
+
+          # ── Copy root module files (.psd1, .psm1, .ps1, .cmd) ────────────
+          foreach ($pattern in @('*.psd1', '*.psm1', '*.ps1', '*.cmd')) {
+              Get-ChildItem -Path $moduleDir -Filter $pattern -File |
+                  Where-Object { $_.Name -ne 'PSScriptAnalyzerSettings.psd1' } |
+                  Copy-Item -Destination $staging
+          }
+
+          # ── Copy essential directories ────────────────────────────────────
+          foreach ($dir in @('src', 'config', 'scripts', 'docs')) {
+              $source = Join-Path $moduleDir $dir
+              if (Test-Path $source) {
+                  Copy-Item $source -Destination (Join-Path $staging $dir) -Recurse
+              }
+          }
+
+          # ── Copy documentation files ──────────────────────────────────────
+          foreach ($file in @('LICENSE', 'README.md', 'CONTRIBUTING.md', 'SECURITY.md')) {
+              $doc = Join-Path $moduleDir $file
+              if (Test-Path $doc) { Copy-Item $doc -Destination $staging }
+          }
+
+          # ── Clean user-specific / backup files from staging ───────────────
+          Get-ChildItem $staging -Recurse -File |
+              Where-Object { $_.Name -match '\.bak(\.|$)' } |
+              Remove-Item -Force
+
+          $userConfig = Join-Path $staging 'config' 'config.json'
+          if (Test-Path $userConfig) { Remove-Item $userConfig -Force }
+
+          # ── Create ZIP ────────────────────────────────────────────────────
+          $zipPath = Join-Path $env:RUNNER_TEMP $zipName
+          Compress-Archive -Path "$staging/*" -DestinationPath $zipPath -Force
+
+          $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash
+          Write-Host "ZIP   : $zipName"
+          Write-Host "SHA256: $hash"
+
+          "zip_path=$zipPath" >> $env:GITHUB_OUTPUT
+          "zip_name=$zipName" >> $env:GITHUB_OUTPUT
+          "sha256=$hash"      >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "dev-bootstrap ${{ github.ref_name }}"
+          generate_release_notes: true
+          files: ${{ steps.build.outputs.zip_path }}
+
+      - name: Step Summary
+        shell: pwsh
+        run: |
+          $md = [System.Text.StringBuilder]::new()
+          [void]$md.AppendLine('## Release Summary')
+          [void]$md.AppendLine()
+          [void]$md.AppendLine('| Detail | Value |')
+          [void]$md.AppendLine('|--------|-------|')
+          [void]$md.AppendLine("| Tag | ``${{ github.ref_name }}`` |")
+          [void]$md.AppendLine("| Module | ``${{ steps.manifest.outputs.module_name }}`` |")
+          [void]$md.AppendLine("| Asset | ``${{ steps.build.outputs.zip_name }}`` |")
+          [void]$md.AppendLine("| SHA256 | ``${{ steps.build.outputs.sha256 }}`` |")
+          [void]$md.AppendLine("| Release | ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }} |")
+          $md.ToString() >> $env:GITHUB_STEP_SUMMARY
