@@ -27,6 +27,19 @@
         "teamviewer": false
       }
     },
+    "configurations": {
+      "enabled": false,
+      "catalog": {
+        "addMakePath": true,
+        "addCopilotChatKeybindings": true,
+        "setGitHubUser": false,
+        "desktopLinkForThisApplication": false
+      },
+      "gitHubUser": {
+        "name": "Name Surname",
+        "email": "name.surname@yourcompany.com"
+      }
+    },
     "github": {
       "enabled": false,
       "path": "D:\\GitHub",
@@ -50,24 +63,11 @@
     },
     "acr": {
       "enabled": false,
-      "tenantId": "",
       "registries": ["myregistry"],
-      "images": ["myapp:latest"],
+      "imagesInclude": ["*"],
+      "imagesExclude": [],
       "retryCount": 3,
       "retryDelaySeconds": 10
-    },
-    "configurations": {
-      "enabled": false,
-      "catalog": {
-        "addMakePath": true,
-        "addCopilotChatKeybindings": true,
-        "setGitHubUser": false,
-        "desktopLinkForThisApplication": false
-      },
-      "gitHubUser": {
-        "name": "Name Surname",
-        "email": "name.surname@yourcompany.com"
-      }
     }
   }
 }

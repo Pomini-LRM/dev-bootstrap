@@ -37,6 +37,19 @@ function Get-DefaultConfig {
                     teamviewer = $false
                 }
             }
+            configurations = @{
+                enabled = $false
+                catalog = @{
+                    addMakePath = $true
+                    addCopilotChatKeybindings = $true
+                    setGitHubUser = $false
+                    desktopLinkForThisApplication = $false
+                }
+                gitHubUser = @{
+                    name = ''
+                    email = ''
+                }
+            }
             github = @{
                 enabled = $false
                 path = '~/GitHub'
@@ -60,24 +73,11 @@ function Get-DefaultConfig {
             }
             acr = @{
                 enabled = $false
-                tenantId = ''
                 registries = @()
-                images = @()
+                imagesInclude = @('*')
+                imagesExclude = @()
                 retryCount = 3
                 retryDelaySeconds = 10
-            }
-            configurations = @{
-                enabled = $false
-                catalog = @{
-                    addMakePath = $true
-                    addCopilotChatKeybindings = $true
-                    setGitHubUser = $false
-                    desktopLinkForThisApplication = $false
-                }
-                gitHubUser = @{
-                    name = ''
-                    email = ''
-                }
             }
         }
     }
@@ -103,8 +103,10 @@ function Read-DevBootstrapConfig {
     }
 
     $loaded = Normalize-AppInstallerAppSelectionConfig -Config $loaded
+    $loaded = Normalize-AcrImageFilterConfig -Config $loaded
     $merged = Merge-Hashtable -Default $defaults -Override $loaded
     $merged = Normalize-AppInstallerAppSelectionConfig -Config $merged
+    $merged = Normalize-AcrImageFilterConfig -Config $merged
     $errors = @(Test-DevBootstrapConfig -Config $merged)
     if ($errors.Count -gt 0) {
         throw ("Configuration validation failed:`n" + ($errors -join "`n"))
@@ -203,17 +205,19 @@ function Test-DevBootstrapConfig {
     }
 
     if ($Config.modules.acr.enabled) {
-        $tenantId = $Config.modules.acr.tenantId
-        if ([string]::IsNullOrWhiteSpace($tenantId)) {
-            $tenantId = Get-SecureEnvVariable -Name 'AZURE_TENANT_ID'
-        }
+        $tenantId = Get-SecureEnvVariable -Name 'AZURE_TENANT_ID'
 
         if ([string]::IsNullOrWhiteSpace($tenantId)) {
-            $errors.Add('modules.acr.tenantId is required when ACR is enabled (or set AZURE_TENANT_ID).')
+            $errors.Add('AZURE_TENANT_ID is required when ACR is enabled.')
         }
 
-        if ($null -eq $Config.modules.acr.registries -or $Config.modules.acr.registries.Count -eq 0) {
+        $registries = @($Config.modules.acr.registries)
+        if ($registries.Count -eq 0) {
             $errors.Add('modules.acr.registries requires at least one registry name.')
+        }
+
+        if ($null -eq $Config.modules.acr.imagesInclude) {
+            $errors.Add('modules.acr.imagesInclude must be set (use ["*"] for all images).')
         }
     }
 
@@ -289,6 +293,43 @@ function Normalize-AppInstallerAppSelectionConfig {
             $appInstaller.recommendedApps[$key] = $true
         }
     }
+
+    return $Config
+}
+
+function Normalize-AcrImageFilterConfig {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$Config)
+
+    if (-not $Config.ContainsKey('modules') -or -not $Config.modules.ContainsKey('acr')) {
+        return $Config
+    }
+
+    $acr = $Config.modules.acr
+
+    if ($acr -isnot [System.Collections.IDictionary]) {
+        return $Config
+    }
+
+    if (-not $acr.ContainsKey('imagesInclude')) {
+        if ($acr.ContainsKey('images')) {
+            $acr.imagesInclude = @($acr.images)
+        }
+        else {
+            $acr.imagesInclude = @('*')
+        }
+    }
+
+    if (-not $acr.ContainsKey('imagesExclude') -or $null -eq $acr.imagesExclude) {
+        $acr.imagesExclude = @()
+    }
+
+    if ($acr.ContainsKey('images')) {
+        $acr.Remove('images') | Out-Null
+    }
+
+    $acr.imagesInclude = @($acr.imagesInclude)
+    $acr.imagesExclude = @($acr.imagesExclude)
 
     return $Config
 }

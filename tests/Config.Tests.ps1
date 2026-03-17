@@ -45,6 +45,12 @@ Describe 'Get-DefaultConfig' {
         $config.modules.appInstaller.optionalApps.teamviewer | Should -BeFalse
         $config.modules.configurations.catalog.desktopLinkForThisApplication | Should -BeFalse
     }
+
+    It 'defines ACR image include/exclude defaults' {
+        $config = Get-DefaultConfig
+        $config.modules.acr.imagesInclude | Should -Be @('*')
+        $config.modules.acr.imagesExclude | Should -Be @()
+    }
 }
 
 Describe 'Merge-Hashtable' {
@@ -79,6 +85,21 @@ Describe 'Test-DevBootstrapConfig' {
 
         $normalized.modules.appInstaller.recommendedApps.vscode | Should -BeFalse
         $normalized.modules.appInstaller.optionalApps.ContainsKey('vscode') | Should -BeFalse
+    }
+
+    It 'migrates legacy modules.acr.images to imagesInclude' {
+        $config = @{
+            modules = @{
+                acr = @{
+                    images = @('plrm-vscode')
+                }
+            }
+        }
+
+        $normalized = Normalize-AcrImageFilterConfig -Config $config
+        $normalized.modules.acr.imagesInclude | Should -Be @('plrm-vscode')
+        $normalized.modules.acr.imagesExclude | Should -Be @()
+        $normalized.modules.acr.ContainsKey('images') | Should -BeFalse
     }
 }
 

@@ -176,7 +176,7 @@ function Get-CompactUserConfig {
         modules = @{}
     }
 
-    foreach ($moduleName in @('appInstaller', 'github', 'devops', 'acr', 'configurations')) {
+    foreach ($moduleName in @('appInstaller', 'configurations', 'github', 'devops', 'acr')) {
         $moduleConfig = $Config.modules[$moduleName]
         if ($moduleConfig.enabled) {
             if ($moduleName -eq 'appInstaller') {
@@ -475,9 +475,27 @@ if ($config.modules.devops.enabled) {
 if ($config.modules.acr.enabled) {
     Write-Host ''
     Write-Host 'Module: acr' -ForegroundColor Cyan
-    $config.modules.acr.tenantId = Read-TextWithDefault -Prompt 'Azure tenant id (leave empty to use AZURE_TENANT_ID env)' -Default ([string]$config.modules.acr.tenantId)
+
+    if (-not $config.modules.acr.ContainsKey('imagesInclude')) {
+        if ($config.modules.acr.ContainsKey('images')) {
+            $config.modules.acr.imagesInclude = @($config.modules.acr.images)
+        }
+        else {
+            $config.modules.acr.imagesInclude = @('*')
+        }
+    }
+
+    if (-not $config.modules.acr.ContainsKey('imagesExclude') -or $null -eq $config.modules.acr.imagesExclude) {
+        $config.modules.acr.imagesExclude = @()
+    }
+
+    if ($config.modules.acr.ContainsKey('images')) {
+        $config.modules.acr.Remove('images') | Out-Null
+    }
+
     $config.modules.acr.registries = Read-ListWithDefault -Prompt 'ACR registries (comma-separated)' -Default @($config.modules.acr.registries)
-    $config.modules.acr.images = Read-ListWithDefault -Prompt 'Images to pull (comma-separated, for example app:latest)' -Default @($config.modules.acr.images)
+    $config.modules.acr.imagesInclude = Read-ListWithDefault -Prompt 'Images include (comma-separated; use * for all)' -Default @($config.modules.acr.imagesInclude)
+    $config.modules.acr.imagesExclude = Read-ListWithDefault -Prompt 'Images exclude (comma-separated)' -Default @($config.modules.acr.imagesExclude)
 }
 
 $outputDirectory = Split-Path -Parent $OutputPath
@@ -513,11 +531,7 @@ if ($enabled -contains 'devops') {
 }
 
 if ($enabled -contains 'acr') {
-    if ([string]::IsNullOrWhiteSpace([string]$config.modules.acr.tenantId)) {
-        $requiredVariables.Add('AZURE_TENANT_ID') | Out-Null
-    }
-    $requiredVariables.Add('AZURE_CLIENT_ID') | Out-Null
-    $requiredVariables.Add('AZURE_CLIENT_SECRET') | Out-Null
+    $requiredVariables.Add('AZURE_TENANT_ID') | Out-Null
 }
 
 $step = 1

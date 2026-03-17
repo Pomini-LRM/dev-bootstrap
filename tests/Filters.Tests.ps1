@@ -7,6 +7,7 @@ BeforeAll {
     . (Join-Path $projectRoot 'src' 'common' 'Utilities.ps1')
     . (Join-Path $projectRoot 'src' 'modules' 'Sync-GitHubRepos.ps1')
     . (Join-Path $projectRoot 'src' 'modules' 'Sync-DevOpsRepos.ps1')
+    . (Join-Path $projectRoot 'src' 'modules' 'Sync-AcrImages.ps1')
 
     $testLogDir = Join-Path $env:TEMP 'dev-bootstrap-tests-filters' 'log'
     Initialize-Logger -LogDirectory $testLogDir -Level 'Error' -Silent | Out-Null
@@ -64,6 +65,21 @@ Describe 'DevOps include/exclude filters' {
     It 'filters to explicitly listed projects' {
         Test-DevOpsIncludeExcludeMatch -Name 'platform' -IncludeTokens @('platform') -ExcludeTokens @() | Should -BeTrue
         Test-DevOpsIncludeExcludeMatch -Name 'legacy' -IncludeTokens @('platform') -ExcludeTokens @() | Should -BeFalse
+    }
+}
+
+Describe 'ACR include/exclude filters' {
+    It 'includes all images with wildcard include' {
+        Test-AcrIncludeExcludeMatch -Name 'platform-api' -IncludeTokens @('*') -ExcludeTokens @() | Should -BeTrue
+    }
+
+    It 'excludes image when listed in exclude' {
+        Test-AcrIncludeExcludeMatch -Name 'platform-api' -IncludeTokens @('*') -ExcludeTokens @('platform-api') | Should -BeFalse
+    }
+
+    It 'filters to explicitly listed images' {
+        Test-AcrIncludeExcludeMatch -Name 'platform-api' -IncludeTokens @('platform-api') -ExcludeTokens @() | Should -BeTrue
+        Test-AcrIncludeExcludeMatch -Name 'legacy-api' -IncludeTokens @('platform-api') -ExcludeTokens @() | Should -BeFalse
     }
 }
 

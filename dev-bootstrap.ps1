@@ -71,6 +71,10 @@ if (-not $ConfigPath) {
     $ConfigPath = $defaultConfigPath
 }
 
+if (Test-Path -LiteralPath $envFilePath) {
+    Import-EnvFile -Path $envFilePath
+}
+
 if (-not (Test-Path -LiteralPath $ConfigPath)) {
     Write-Host '' -ForegroundColor Red
     Write-Host 'Configuration file not found.' -ForegroundColor Red

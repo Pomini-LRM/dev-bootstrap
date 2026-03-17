@@ -17,6 +17,7 @@ Cross-platform environment bootstrap suite for PowerShell 7+.
     - [General](#general)
     - [GitHub Settings](#github-settings)
     - [DevOps Settings](#devops-settings)
+    - [ACR Settings](#acr-settings)
     - [AppInstaller and Module Dependencies](#appinstaller-and-module-dependencies)
   - [Run Modes](#run-modes)
   - [Modules](#modules)
@@ -210,6 +211,27 @@ Behavior:
 - Path layout:
   - `<path>/<organization>/<project>/<repo>`
 
+### ACR Settings
+
+```json
+"acr": {
+  "enabled": true,
+  "registries": ["acrpominishareddev"],
+  "imagesInclude": ["*"],
+  "imagesExclude": [],
+  "retryCount": 3,
+  "retryDelaySeconds": 10
+}
+```
+
+Behavior:
+
+- `registries` defines the ACR registries to authenticate against.
+- `imagesInclude` / `imagesExclude` follow the same include/exclude rules used for GitHub and DevOps filters.
+- `imagesInclude = ["*"]` pulls all repositories from the configured registries.
+- `imagesInclude = ["plrm-vscode", "plrm-jupyter"]` pulls only those images.
+- If an image appears in both include and exclude, exclude wins.
+
 ### AppInstaller and Module Dependencies
 
 `appInstaller` uses three app groups:
@@ -333,6 +355,7 @@ Developer-only version management and release notes are documented here:
 
 - GitHub token guide: [docs/github-classic-token.md](docs/github-classic-token.md)
 - Azure DevOps PAT guide: [docs/azure-devops-pat.md](docs/azure-devops-pat.md)
+- ACR authentication guide (interactive, no app registration): [docs/acr-authentication.md](docs/acr-authentication.md)
 
 ## Logging and Report
 
