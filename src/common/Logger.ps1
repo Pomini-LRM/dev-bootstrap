@@ -85,10 +85,10 @@ function Write-Log {
 
     if (-not $script:_LogSilent) {
         switch ($Level) {
-            'Debug' { Write-Host $entry -ForegroundColor DarkGray }
-            'Info' { Write-Host $entry -ForegroundColor Cyan }
-            'Warning' { Write-Host $entry -ForegroundColor Yellow }
-            'Error' { Write-Host $entry -ForegroundColor Red }
+            'Debug' { Write-Host $sanitized -ForegroundColor DarkGray }
+            'Info' { Write-Host $sanitized -ForegroundColor Cyan }
+            'Warning' { Write-Host $sanitized -ForegroundColor Yellow }
+            'Error' { Write-Host $sanitized -ForegroundColor Red }
         }
     }
 

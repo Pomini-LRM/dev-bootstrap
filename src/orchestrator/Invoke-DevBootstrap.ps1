@@ -13,7 +13,7 @@ function Invoke-DevBootstrap {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$Config,
-        [ValidateSet('full', 'appInstaller', 'configurations', 'github', 'devops', 'acr')][string]$RunMode = 'full',
+        [ValidateSet('full', 'appInstaller', 'automation', 'github', 'devops', 'acr')][string]$RunMode = 'full',
         [Parameter(Mandatory)][string]$ProjectRoot,
         [switch]$Force
     )
@@ -44,11 +44,11 @@ function Invoke-DevBootstrap {
             Invoke = { param($c, $p, $f) Invoke-AppInstaller -Config $c -ProjectRoot $p -Force:$f }
         }
         @{
-            Name = 'configurations'
-            Label = 'Local Configurations'
-            Enabled = $Config.modules.configurations.enabled
-            ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Apply-Configurations.ps1'
-            Invoke = { param($c, $p, $f) Invoke-Configurations -Config $c -ProjectRoot $p -Force:$f }
+            Name = 'automation'
+            Label = 'Automation'
+            Enabled = $Config.modules.automation.enabled
+            ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Invoke-Automation.ps1'
+            Invoke = { param($c, $p, $f) Invoke-Automation -Config $c -ProjectRoot $p -Force:$f }
         }
         @{
             Name = 'github'
@@ -137,7 +137,7 @@ function Invoke-DevBootstrap {
 
             $moduleErrorCount = @($moduleResultList | Where-Object { $_.Status -eq 'ERROR' }).Count
             $moduleInsUpdCount = @($moduleResultList | Where-Object { $_.Status -in @('INSTALLED', 'UPDATED') }).Count
-            $modulePresSkpCount = @($moduleResultList | Where-Object { $_.Status -in @('ALREADY_PRESENT', 'SKIPPED') }).Count
+            $modulePresSkpCount = [Math]::Max(0, $moduleItemCount - $moduleErrorCount - $moduleInsUpdCount)
             if ($moduleErrorCount -gt 0) {
                 $moduleStatus = 'ERROR'
                 Write-Log -Level Warning -Message "Module $($module.Label) completed with $moduleErrorCount errors."
@@ -223,32 +223,27 @@ function Write-ModuleExecutionSummary {
     $rows = @($ModuleExecutions)
     Write-Log -Level Info -Message ''
     Write-Log -Level Info -Message 'Module execution summary:'
-    Write-Log -Level Info -Message '  MODULE                 STATUS      ITEMS  ERRORS  INS/UPD  PRES/SKP  DURATION'
-    Write-Log -Level Info -Message '  ---------------------  ----------  -----  ------  -------  --------  ------------'
+    Write-Log -Level Info -Message '  MODULE                 STATUS      ITEMS    INS/UPD  PRES/SKP  ERRORS  DURATION'
+    Write-Log -Level Info -Message '  ---------------------  ----------  -----  -------  --------  ------  ------------'
 
     foreach ($row in $rows) {
         $durationText = [TimeSpan]$row.Duration
         $moduleText = ([string]$row.Module).PadRight(21)
         $statusText = ([string]$row.Status).PadRight(10)
         $itemsText = ([string]$row.Items).PadLeft(5)
-        $errorsText = ([string]$row.Errors).PadLeft(6)
         $insUpdText = ([string]$row.InsUpd).PadLeft(7)
         $presSkpText = ([string]$row.PresSkp).PadLeft(8)
-        Write-Log -Level Info -Message "  $moduleText  $statusText  $itemsText  $errorsText  $insUpdText  $presSkpText  $($durationText.ToString('hh\:mm\:ss'))"
+        $errorsText = ([string]$row.Errors).PadLeft(6)
+        Write-Log -Level Info -Message "  $moduleText  $statusText  $itemsText  $insUpdText  $presSkpText  $errorsText  $($durationText.ToString('hh\:mm\:ss\.fff'))"
     }
 
-    $totalDurationText = if ($TotalDuration.TotalHours -ge 1) {
-        $TotalDuration.ToString('hh\:mm\:ss\.fff')
-    }
-    else {
-        $TotalDuration.ToString('mm\:ss\.fff')
-    }
+    $totalDurationText = $TotalDuration.ToString('hh\:mm\:ss\.fff')
 
     $totalModuleText = 'TOTAL'.PadRight(21)
     $totalStatusText = ''.PadRight(10)
     $totalItemsText = ([string]$TotalOperations).PadLeft(5)
-    $totalErrorsText = ([string]$ErrorCount).PadLeft(6)
     $totalInsUpd = ([string](@($rows | Measure-Object -Property InsUpd -Sum).Sum)).PadLeft(7)
     $totalPresSkp = ([string](@($rows | Measure-Object -Property PresSkp -Sum).Sum)).PadLeft(8)
-    Write-Log -Level Info -Message "  $totalModuleText  $totalStatusText  $totalItemsText  $totalErrorsText  $totalInsUpd  $totalPresSkp  $totalDurationText"
+    $totalErrorsText = ([string]$ErrorCount).PadLeft(6)
+    Write-Log -Level Info -Message "  $totalModuleText  $totalStatusText  $totalItemsText  $totalInsUpd  $totalPresSkp  $totalErrorsText  $totalDurationText"
 }

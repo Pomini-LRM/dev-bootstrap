@@ -10,7 +10,7 @@
     Runs environment bootstrap modules for applications, repositories, and container images.
 
 .PARAMETER RunMode
-    full | appInstaller | configurations | github | devops | acr
+    full | appInstaller | automation | github | devops | acr
 
 .PARAMETER ConfigPath
     Path to JSON configuration. Defaults to config/config.json.
@@ -33,7 +33,7 @@
 
 [CmdletBinding()]
 param(
-    [ValidateSet('full', 'appInstaller', 'configurations', 'github', 'devops', 'acr')]
+    [ValidateSet('full', 'appInstaller', 'automation', 'github', 'devops', 'acr')]
     [string]$RunMode = 'full',
 
     [string]$ConfigPath,

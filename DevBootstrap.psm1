@@ -13,7 +13,7 @@ $filesToLoad = @(
     'src/common/Version.ps1'
     'src/orchestrator/Invoke-DevBootstrap.ps1'
     'src/modules/Install-Apps.ps1'
-    'src/modules/Apply-Configurations.ps1'
+    'src/modules/Invoke-Automation.ps1'
     'src/modules/Sync-GitHubRepos.ps1'
     'src/modules/Sync-DevOpsRepos.ps1'
     'src/modules/Sync-AcrImages.ps1'

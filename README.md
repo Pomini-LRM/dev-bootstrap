@@ -22,7 +22,7 @@ Cross-platform environment bootstrap suite for PowerShell 7+.
   - [Run Modes](#run-modes)
   - [Modules](#modules)
     - [appInstaller](#appinstaller)
-    - [configurations](#configurations)
+    - [automation](#automation)
     - [github](#github)
     - [devops](#devops)
     - [acr](#acr)
@@ -292,6 +292,7 @@ pwsh ./dev-bootstrap.ps1 -RunMode full
 
 # Single module
 pwsh ./dev-bootstrap.ps1 -RunMode appInstaller
+pwsh ./dev-bootstrap.ps1 -RunMode automation
 pwsh ./dev-bootstrap.ps1 -RunMode github
 pwsh ./dev-bootstrap.ps1 -RunMode devops
 pwsh ./dev-bootstrap.ps1 -RunMode acr
@@ -345,15 +346,67 @@ Developer-only version management and release notes are documented here:
   - `general.force`
   - `modules.appInstaller.force`
 
-### configurations
+### automation
 
-- Applies local workstation configuration tasks defined in `config/configurations.catalog.json`.
-- Supported actions:
+- General-purpose automation script runner. Executes `.ps1` scripts defined in `config/automation.catalog.json`.
+- Each catalog entry specifies a `scriptFile` field pointing to a script in `src/automation/`.
+- Built-in automation scripts (migrated from the former `configurations` module):
   - add `GnuWin32\bin` to user `PATH`
   - copy VS Code Copilot Chat keybindings template
   - set global git user name/email
   - create desktop shortcut for `dev-bootstrap`
 - Runs idempotently with `UPDATED`, `NONE`, `SKIPPED`, `ERROR` statuses.
+- Fully extensible: add new scripts without modifying the runner code.
+
+#### Adding a new automation script
+
+1. Create a `.ps1` script in `src/automation/` (e.g. `My-CustomTask.ps1`).
+2. The script must accept two mandatory parameters and return a result hashtable:
+
+   ```powershell
+   param(
+       [Parameter(Mandatory)][hashtable]$ModuleConfig,
+       [Parameter(Mandatory)][string]$ProjectRoot
+   )
+
+   # ... your logic ...
+
+   return @{ Status = 'UPDATED'; Message = 'Description of what was done.' }
+   ```
+
+   Valid `Status` values: `UPDATED`, `NONE`, `SKIPPED`, `ERROR`.
+
+3. Add an entry to `config/automation.catalog.json`:
+
+   ```json
+   {
+     "key": "myCustomTask",
+     "name": "My Custom Task",
+     "description": "Describe what this automation does.",
+     "scriptFile": "My-CustomTask.ps1"
+   }
+   ```
+
+4. Enable it in `config/config.json`:
+
+   ```json
+   "automation": {
+     "enabled": true,
+     "catalog": {
+       "myCustomTask": true
+     }
+   }
+   ```
+
+5. Run:
+
+   ```powershell
+   pwsh ./dev-bootstrap.ps1 -RunMode automation
+   ```
+
+#### Migration from `configurations`
+
+The former `configurations` module has been renamed to `automation`. If your `config/config.json` still uses `modules.configurations`, the tool automatically migrates it to `modules.automation` at load time with a deprecation warning. Update your config file to use `automation` directly to suppress the warning.
 
 ### github
 

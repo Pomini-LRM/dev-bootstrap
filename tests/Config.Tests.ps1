@@ -2,6 +2,10 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '5.0' }
 
 BeforeAll {
+    if ([string]::IsNullOrWhiteSpace($env:TEMP)) {
+        $env:TEMP = [System.IO.Path]::GetTempPath()
+    }
+
     $projectRoot = Split-Path -Parent $PSScriptRoot
     . (Join-Path $projectRoot 'src' 'common' 'Logger.ps1')
     . (Join-Path $projectRoot 'src' 'common' 'Config.ps1')
@@ -19,7 +23,7 @@ Describe 'Get-DefaultConfig' {
         $config.modules.github | Should -Not -BeNullOrEmpty
         $config.modules.devops | Should -Not -BeNullOrEmpty
         $config.modules.acr | Should -Not -BeNullOrEmpty
-        $config.modules.configurations | Should -Not -BeNullOrEmpty
+        $config.modules.automation | Should -Not -BeNullOrEmpty
     }
 
     It 'supports Windows and Linux module path styles' {
@@ -43,7 +47,7 @@ Describe 'Get-DefaultConfig' {
         $config.modules.appInstaller.optionalApps.inkscape | Should -BeFalse
         $config.modules.appInstaller.optionalApps.pythonLatest | Should -BeFalse
         $config.modules.appInstaller.optionalApps.teamviewer | Should -BeFalse
-        $config.modules.configurations.catalog.desktopLinkForThisApplication | Should -BeFalse
+        $config.modules.automation.catalog.desktopLinkForThisApplication | Should -BeFalse
     }
 
     It 'defines ACR image include/exclude defaults' {

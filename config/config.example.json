@@ -28,7 +28,7 @@
         "teamviewer": false
       }
     },
-    "configurations": {
+    "automation": {
       "enabled": false,
       "catalog": {
         "addMakePath": true,

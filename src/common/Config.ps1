@@ -38,7 +38,7 @@ function Get-DefaultConfig {
                     teamviewer = $false
                 }
             }
-            configurations = @{
+            automation = @{
                 enabled = $false
                 catalog = @{
                     addMakePath = $true
@@ -120,9 +120,11 @@ function Read-DevBootstrapConfig {
         throw "Invalid JSON configuration in '$Path': $_"
     }
 
+    $loaded = ConvertTo-AutomationModuleConfig -Config $loaded
     $loaded = ConvertTo-AppInstallerAppSelectionConfig -Config $loaded
     $loaded = ConvertTo-AcrImageFilterConfig -Config $loaded
     $merged = Merge-Hashtable -Default $defaults -Override $loaded
+    $merged = ConvertTo-AutomationModuleConfig -Config $merged
     $merged = ConvertTo-AppInstallerAppSelectionConfig -Config $merged
     $merged = ConvertTo-AcrImageFilterConfig -Config $merged
     $errors = @(Test-DevBootstrapConfig -Config $merged)
@@ -249,22 +251,22 @@ function Test-DevBootstrapConfig {
         }
     }
 
-    if ($Config.modules.configurations.enabled) {
-        if ($null -eq $Config.modules.configurations.catalog -or -not ($Config.modules.configurations.catalog -is [System.Collections.IDictionary])) {
-            $errors.Add('modules.configurations.catalog must be a hashtable of boolean flags.')
+    if ($Config.modules.automation.enabled) {
+        if ($null -eq $Config.modules.automation.catalog -or -not ($Config.modules.automation.catalog -is [System.Collections.IDictionary])) {
+            $errors.Add('modules.automation.catalog must be a hashtable of boolean flags.')
         }
 
-        if ($Config.modules.configurations.catalog.setGitHubUser) {
-            if (-not $Config.modules.configurations.ContainsKey('gitHubUser') -or -not ($Config.modules.configurations.gitHubUser -is [System.Collections.IDictionary])) {
-                $errors.Add('modules.configurations.gitHubUser must be set when modules.configurations.catalog.setGitHubUser is enabled.')
+        if ($Config.modules.automation.catalog.setGitHubUser) {
+            if (-not $Config.modules.automation.ContainsKey('gitHubUser') -or -not ($Config.modules.automation.gitHubUser -is [System.Collections.IDictionary])) {
+                $errors.Add('modules.automation.gitHubUser must be set when modules.automation.catalog.setGitHubUser is enabled.')
             }
             else {
-                if ([string]::IsNullOrWhiteSpace([string]$Config.modules.configurations.gitHubUser.name)) {
-                    $errors.Add('modules.configurations.gitHubUser.name must not be empty when setGitHubUser is enabled.')
+                if ([string]::IsNullOrWhiteSpace([string]$Config.modules.automation.gitHubUser.name)) {
+                    $errors.Add('modules.automation.gitHubUser.name must not be empty when setGitHubUser is enabled.')
                 }
 
-                if ([string]::IsNullOrWhiteSpace([string]$Config.modules.configurations.gitHubUser.email)) {
-                    $errors.Add('modules.configurations.gitHubUser.email must not be empty when setGitHubUser is enabled.')
+                if ([string]::IsNullOrWhiteSpace([string]$Config.modules.automation.gitHubUser.email)) {
+                    $errors.Add('modules.automation.gitHubUser.email must not be empty when setGitHubUser is enabled.')
                 }
             }
         }
@@ -348,6 +350,28 @@ function ConvertTo-AcrImageFilterConfig {
 
     $acr.imagesInclude = @($acr.imagesInclude)
     $acr.imagesExclude = @($acr.imagesExclude)
+
+    return $Config
+}
+
+function ConvertTo-AutomationModuleConfig {
+    <#
+    .SYNOPSIS
+        Migrates legacy 'modules.configurations' key to 'modules.automation'.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$Config)
+
+    if (-not $Config.ContainsKey('modules')) {
+        return $Config
+    }
+
+    $modules = $Config.modules
+    if ($modules.ContainsKey('configurations') -and -not $modules.ContainsKey('automation')) {
+        Write-Warning "Migrating deprecated 'modules.configurations' to 'modules.automation'. Update your config.json to use 'automation' directly."
+        $modules['automation'] = $modules['configurations']
+        $modules.Remove('configurations')
+    }
 
     return $Config
 }

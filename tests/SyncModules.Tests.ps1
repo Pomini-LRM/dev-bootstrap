@@ -2,6 +2,10 @@
 #Requires -Modules @{ ModuleName = 'Pester'; ModuleVersion = '5.0' }
 
 BeforeAll {
+    if ([string]::IsNullOrWhiteSpace($env:TEMP)) {
+        $env:TEMP = [System.IO.Path]::GetTempPath()
+    }
+
     $script:projectRoot = Split-Path -Parent $PSScriptRoot
     . (Join-Path $script:projectRoot 'src' 'common' 'Logger.ps1')
     . (Join-Path $script:projectRoot 'src' 'common' 'Filters.ps1')

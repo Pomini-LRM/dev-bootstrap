@@ -101,13 +101,13 @@ function Read-AppInstallerCatalog {
     return ($raw | ConvertFrom-Json -AsHashtable -Depth 30)
 }
 
-function Read-ConfigurationsCatalog {
+function Read-AutomationCatalog {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$ProjectRoot)
 
-    $catalogPath = Join-Path $ProjectRoot 'config' 'configurations.catalog.json'
+    $catalogPath = Join-Path $ProjectRoot 'config' 'automation.catalog.json'
     if (-not (Test-Path -LiteralPath $catalogPath)) {
-        throw "Configurations catalog not found: $catalogPath"
+        throw "Automation catalog not found: $catalogPath"
     }
 
     $raw = Get-Content -LiteralPath $catalogPath -Raw -Encoding utf8
@@ -177,7 +177,7 @@ function Get-CompactUserConfig {
         modules = @{}
     }
 
-    foreach ($moduleName in @('appInstaller', 'configurations', 'github', 'devops', 'acr')) {
+    foreach ($moduleName in @('appInstaller', 'automation', 'github', 'devops', 'acr')) {
         $moduleConfig = $Config.modules[$moduleName]
         if ($moduleConfig.enabled) {
             if ($moduleName -eq 'appInstaller') {
@@ -198,7 +198,7 @@ function Get-CompactUserConfig {
                     optionalApps = $optionalApps
                 }
             }
-            elseif ($moduleName -eq 'configurations') {
+            elseif ($moduleName -eq 'automation') {
                 $catalog = @{}
                 foreach ($key in @($moduleConfig.catalog.Keys | Sort-Object)) {
                     $catalog[$key] = [bool]$moduleConfig.catalog[$key]
@@ -232,7 +232,7 @@ function Read-EnabledModulesFallback {
     Write-Host ''
     Write-Host 'Which modules do you want to enable? (multi-select)' -ForegroundColor Cyan
     Write-Host '[1] appInstaller'
-    Write-Host '[2] configurations'
+    Write-Host '[2] automation'
     Write-Host '[3] github'
     Write-Host '[4] devops'
     Write-Host '[5] acr'
@@ -243,10 +243,10 @@ function Read-EnabledModulesFallback {
             return $DefaultSelection
         }
 
-        return @('appInstaller', 'configurations', 'github', 'devops', 'acr')
+        return @('appInstaller', 'automation', 'github', 'devops', 'acr')
     }
 
-    $map = @{ '1' = 'appInstaller'; '2' = 'configurations'; '3' = 'github'; '4' = 'devops'; '5' = 'acr' }
+    $map = @{ '1' = 'appInstaller'; '2' = 'automation'; '3' = 'github'; '4' = 'devops'; '5' = 'acr' }
     $selected = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 
     foreach ($token in @($raw.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
@@ -268,7 +268,7 @@ function Read-EnabledModules {
         return Read-EnabledModulesFallback -DefaultSelection $DefaultSelection
     }
 
-    $modules = @('appInstaller', 'configurations', 'github', 'devops', 'acr')
+    $modules = @('appInstaller', 'automation', 'github', 'devops', 'acr')
     $selected = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($item in $DefaultSelection) {
         if ($modules -contains $item) {
@@ -328,7 +328,7 @@ function Get-EnabledModuleDefaults {
     param([Parameter(Mandatory)][hashtable]$Config)
 
     $enabled = [System.Collections.Generic.List[string]]::new()
-    foreach ($moduleName in @('appInstaller', 'configurations', 'github', 'devops', 'acr')) {
+    foreach ($moduleName in @('appInstaller', 'automation', 'github', 'devops', 'acr')) {
         if ($Config.modules[$moduleName].enabled) {
             $enabled.Add($moduleName)
         }
@@ -366,7 +366,7 @@ Write-Host "Output:   $OutputPath"
 $enabledModuleDefaults = Get-EnabledModuleDefaults -Config $config
 $enabledModules = Read-EnabledModules -DefaultSelection $enabledModuleDefaults
 
-foreach ($moduleName in @('appInstaller', 'configurations', 'github', 'devops', 'acr')) {
+foreach ($moduleName in @('appInstaller', 'automation', 'github', 'devops', 'acr')) {
     $config.modules[$moduleName].enabled = $enabledModules -contains $moduleName
 }
 
@@ -428,33 +428,33 @@ if ($config.modules.appInstaller.enabled) {
     }
 }
 
-if ($config.modules.configurations.enabled) {
+if ($config.modules.automation.enabled) {
     Write-Host ''
-    Write-Host 'Module: configurations' -ForegroundColor Cyan
+    Write-Host 'Module: automation' -ForegroundColor Cyan
 
-    $configCatalog = Read-ConfigurationsCatalog -ProjectRoot $projectRoot
+    $configCatalog = Read-AutomationCatalog -ProjectRoot $projectRoot
 
-    if (-not $config.modules.configurations.ContainsKey('catalog') -or $null -eq $config.modules.configurations.catalog) {
-        $config.modules.configurations.catalog = @{}
+    if (-not $config.modules.automation.ContainsKey('catalog') -or $null -eq $config.modules.automation.catalog) {
+        $config.modules.automation.catalog = @{}
     }
 
-    if (-not $config.modules.configurations.ContainsKey('gitHubUser') -or $null -eq $config.modules.configurations.gitHubUser) {
-        $config.modules.configurations.gitHubUser = @{ name = ''; email = '' }
+    if (-not $config.modules.automation.ContainsKey('gitHubUser') -or $null -eq $config.modules.automation.gitHubUser) {
+        $config.modules.automation.gitHubUser = @{ name = ''; email = '' }
     }
 
-    foreach ($entry in @($configCatalog.configurations)) {
+    foreach ($entry in @($configCatalog.automations)) {
         $key = [string]$entry.key
-        if (-not $config.modules.configurations.catalog.ContainsKey($key)) {
-            $config.modules.configurations.catalog[$key] = $false
+        if (-not $config.modules.automation.catalog.ContainsKey($key)) {
+            $config.modules.automation.catalog[$key] = $false
         }
 
-        $prompt = "Enable configuration: $($entry.name)?"
-        $config.modules.configurations.catalog[$key] = Read-YesNo -Prompt $prompt -Default ([bool]$config.modules.configurations.catalog[$key])
+        $prompt = "Enable automation: $($entry.name)?"
+        $config.modules.automation.catalog[$key] = Read-YesNo -Prompt $prompt -Default ([bool]$config.modules.automation.catalog[$key])
     }
 
-    if ([bool]$config.modules.configurations.catalog.setGitHubUser) {
-        $config.modules.configurations.gitHubUser.name = Read-TextWithDefault -Prompt 'Git user.name' -Default ([string]$config.modules.configurations.gitHubUser.name)
-        $config.modules.configurations.gitHubUser.email = Read-TextWithDefault -Prompt 'Git user.email' -Default ([string]$config.modules.configurations.gitHubUser.email)
+    if ([bool]$config.modules.automation.catalog.setGitHubUser) {
+        $config.modules.automation.gitHubUser.name = Read-TextWithDefault -Prompt 'Git user.name' -Default ([string]$config.modules.automation.gitHubUser.name)
+        $config.modules.automation.gitHubUser.email = Read-TextWithDefault -Prompt 'Git user.email' -Default ([string]$config.modules.automation.gitHubUser.email)
     }
 }
 
@@ -519,7 +519,7 @@ Write-Host ''
 Write-Host "Configuration saved to: $OutputPath" -ForegroundColor Green
 Write-Host 'Next steps:' -ForegroundColor Green
 
-$enabled = @(@('appInstaller', 'configurations', 'github', 'devops', 'acr') | Where-Object { $config.modules[$_].enabled })
+$enabled = @(@('appInstaller', 'automation', 'github', 'devops', 'acr') | Where-Object { $config.modules[$_].enabled })
 $requiredVariables = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 
 if ($enabled -contains 'github') {

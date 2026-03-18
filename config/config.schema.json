@@ -20,10 +20,10 @@
     },
     "modules": {
       "type": "object",
-      "required": ["appInstaller", "configurations", "github", "devops", "acr"],
+      "required": ["appInstaller", "automation", "github", "devops", "acr"],
       "properties": {
         "appInstaller": { "type": "object" },
-        "configurations": { "type": "object" },
+        "automation": { "type": "object" },
         "github": { "type": "object" },
         "devops": { "type": "object" },
         "acr": {
