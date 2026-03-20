@@ -21,6 +21,7 @@ BeforeAll {
 
     $script:originalGitHubToken = [System.Environment]::GetEnvironmentVariable('GITHUB_TOKEN', 'Process')
     $script:originalDevOpsPat = [System.Environment]::GetEnvironmentVariable('AZURE_DEVOPS_PAT', 'Process')
+    $script:originalTenantId = [System.Environment]::GetEnvironmentVariable('AZURE_TENANT_ID', 'Process')
 }
 
 Describe 'Module auth guards' {
@@ -60,9 +61,60 @@ Describe 'Module auth guards' {
     }
 }
 
+Describe 'ACR diagnostics helpers' {
+    It 'detects failure details in az output text' {
+        (Test-AzOutputIndicatesFailure -Output @('ERROR: The resource was not found')) | Should -BeTrue
+        (Test-AzOutputIndicatesFailure -Output @('Forbidden: access denied')) | Should -BeTrue
+        (Test-AzOutputIndicatesFailure -Output @('Could not resolve host name')) | Should -BeTrue
+    }
+
+    It 'does not flag healthy az output' {
+        (Test-AzOutputIndicatesFailure -Output @('plrm-vscode')) | Should -BeFalse
+        (Test-AzOutputIndicatesFailure -Output @('')) | Should -BeFalse
+    }
+}
+
+Describe 'ACR result coherence' {
+    It 'reports one skipped entry per included image when registry is unreachable' {
+        [System.Environment]::SetEnvironmentVariable('AZURE_TENANT_ID', '51835014-d218-4754-b420-16de4790eedf', 'Process')
+
+        Mock -CommandName Test-CommandExists -MockWith { $true }
+        Mock -CommandName docker -MockWith {
+            $global:LASTEXITCODE = 0
+            return 'Docker is running'
+        }
+        Mock -CommandName az -MockWith {
+            $joined = ($args -join ' ').ToLowerInvariant()
+            $global:LASTEXITCODE = 0
+
+            if ($joined -match '^account show') {
+                return '{"tenantId":"51835014-d218-4754-b420-16de4790eedf"}'
+            }
+
+            if ($joined -match '^acr check-health') {
+                return 'ERROR: challenge endpoint failed'
+            }
+
+            if ($joined -match '^acr repository list') {
+                return 'ERROR: registry not reachable'
+            }
+
+            return ''
+        }
+
+        $config = @{ modules = @{ acr = @{ registries = @('acrpominishareddev'); imagesInclude = @('img-a', 'img-b', 'img-c'); imagesExclude = @(); retryCount = 1; retryDelaySeconds = 0 } } }
+        $results = @(Invoke-AcrSync -Config $config -ProjectRoot $script:projectRoot)
+
+        $results.Count | Should -Be 3
+        (@($results | Where-Object { $_.Status -eq 'SKIPPED' })).Count | Should -Be 3
+        (@($results | Where-Object { $_.Status -eq 'ERROR' })).Count | Should -Be 0
+    }
+}
+
 AfterAll {
     [System.Environment]::SetEnvironmentVariable('GITHUB_TOKEN', $script:originalGitHubToken, 'Process')
     [System.Environment]::SetEnvironmentVariable('AZURE_DEVOPS_PAT', $script:originalDevOpsPat, 'Process')
+    [System.Environment]::SetEnvironmentVariable('AZURE_TENANT_ID', $script:originalTenantId, 'Process')
 
     $testRoot = Join-Path $env:TEMP 'dev-bootstrap-tests-sync-modules'
     if (Test-Path $testRoot) {

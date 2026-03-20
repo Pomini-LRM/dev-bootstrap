@@ -88,7 +88,7 @@ Describe 'Invoke-AppInstaller' {
         $config = Get-DefaultConfig
         $results = @(Invoke-AppInstaller -Config $config -ProjectRoot $projectRoot)
         $results.Count | Should -BeGreaterThan 0
-        $results[0].Status | Should -BeIn @('INSTALLED', 'ALREADY_PRESENT', 'SKIPPED', 'ERROR')
+        $results[0].Status | Should -BeIn @('INSTALLED', 'ALREADY_PRESENT', 'DEFERRED', 'SKIPPED', 'ERROR')
     }
 }
 
@@ -204,6 +204,20 @@ Describe 'Winget diagnostics helpers' {
         (Test-ShouldUpgradeInstalledApp -VersionInfo @{ IsInstalled = $true; CurrentVersion = '8.9.2'; LatestVersion = '' }) | Should -BeFalse
     }
 
+    It 'does not treat older latest metadata as upgrade candidate' {
+        (Test-ShouldUpgradeInstalledApp -VersionInfo @{ IsInstalled = $true; CurrentVersion = '1.28.220.0'; LatestVersion = '1.27.470.0' }) | Should -BeFalse
+    }
+
+    It 'normalizes displayed latest when current is newer than source metadata' {
+        $summary = Get-WingetVersionSummary -VersionInfo @{
+            IsInstalled = $true
+            CurrentVersion = '1.28.220.0'
+            LatestVersion = '1.27.470.0'
+        }
+
+        $summary | Should -Be 'Current: 1.28.220.0, Latest: 1.28.220.0'
+    }
+
     It 'detects no-upgrade-available output from winget' {
         (Test-WingetNoUpgradeAvailableOutput -Output @('No applicable upgrade found.')) | Should -BeTrue
         (Test-WingetNoUpgradeAvailableOutput -Output @('Non sono disponibili aggiornamenti.')) | Should -BeTrue
@@ -232,6 +246,18 @@ Describe 'Get-CommandVersionInfo' {
         $info = Get-CommandVersionInfo -App @{ key = 'powershell7' }
         $info.IsInstalled | Should -BeTrue
         $info.CurrentVersion | Should -Be '7.5.4'
+    }
+}
+
+Describe 'PowerShell deferred upgrade queue' {
+    It 'registers deferred action when environment allows it' {
+        Mock -CommandName Add-DeferredAction -MockWith { $true }
+        Mock -CommandName Get-PSCallStack -MockWith { @() }
+
+        $started = Add-DeferredPowerShellUpgradeAction
+
+        $started | Should -BeTrue
+        Assert-MockCalled -CommandName Add-DeferredAction -Times 1 -Exactly
     }
 }
 

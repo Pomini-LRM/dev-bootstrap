@@ -138,5 +138,7 @@ catch {
     exit 2
 }
 
+Clear-DeferredActions
 $exitCode = Invoke-DevBootstrap -Config $config -RunMode $RunMode -ProjectRoot $projectRoot -Force:$Force.IsPresent
+Invoke-DeferredActions -Silent:$config.general.silent -NoConfirm:$config.general.noConfirm
 exit $exitCode

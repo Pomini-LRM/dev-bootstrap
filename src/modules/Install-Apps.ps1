@@ -346,6 +346,23 @@ function Install-ViaWinget {
     $isInstalled = $versionInfo.IsInstalled
 
     if ($isInstalled) {
+        if (Test-ShouldDeferPowerShellSelfUpgrade -App $App -VersionInfo $versionInfo) {
+            $current = [string]$versionInfo.CurrentVersion
+            $latest = [string]$versionInfo.LatestVersion
+            $queued = Add-DeferredPowerShellUpgradeAction
+            $nextStep = if ($queued) {
+                'Upgrade deferred and queued. You will be prompted after the main run to start it in a new window.'
+            }
+            else {
+                "Upgrade deferred. Run 'winget upgrade --id Microsoft.PowerShell --exact --accept-source-agreements --accept-package-agreements' after this run."
+            }
+
+            $msg = "PowerShell update deferred (running in current pwsh session). Current = $current, Latest = $latest. $nextStep"
+            Write-Log -Level Warning -Message "  $msg"
+            $deferredVersionInfo = ConvertTo-AlreadyPresentVersionInfo -VersionInfo $versionInfo
+            return @{ Status = 'DEFERRED'; Message = $msg; VersionInfo = $deferredVersionInfo }
+        }
+
         $upgradeResult = Invoke-WingetUpgradeWithRetry -App $App -AppId $appId
         if ($upgradeResult.ExitCode -eq 0) {
             $postVersionInfo = Get-WingetVersionInfo -AppId $appId
@@ -404,6 +421,63 @@ function Install-ViaWinget {
     }
 
     return @{ Status = 'ERROR'; Message = (Get-WingetFailureMessage -Operation 'install' -ExitCode $installResult.ExitCode -Output $installResult.Output -VersionInfo $versionInfo) }
+}
+
+function Add-DeferredPowerShellUpgradeAction {
+    [CmdletBinding()]
+    param()
+
+    if (-not (Test-IsWindows)) {
+        return $false
+    }
+
+    if (-not [System.Environment]::UserInteractive) {
+        return $false
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace([string]$env:CI)) {
+        return $false
+    }
+
+    $callStack = @(Get-PSCallStack | ForEach-Object { [string]$_.Command })
+    if ($callStack -contains 'Invoke-Pester') {
+        return $false
+    }
+
+    $upgradeCommand = 'winget upgrade --id Microsoft.PowerShell --exact --accept-source-agreements --accept-package-agreements'
+    return (Add-DeferredAction -Key 'upgrade-powershell7' -Title 'PowerShell 7 upgrade' -Command $upgradeCommand)
+}
+
+function Test-ShouldDeferPowerShellSelfUpgrade {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$App,
+        [Parameter(Mandatory)][hashtable]$VersionInfo
+    )
+
+    # Upgrading Microsoft.PowerShell from the same running pwsh session can terminate the host process.
+    if (-not ($IsWindows)) {
+        return $false
+    }
+
+    $appKey = [string]$App.key
+    $wingetId = [string]$App.wingetId
+    if ($appKey -ne 'powershell7' -and $wingetId -ne 'Microsoft.PowerShell') {
+        return $false
+    }
+
+    if (-not $VersionInfo.IsInstalled) {
+        return $false
+    }
+
+    $current = [string]$VersionInfo.CurrentVersion
+    $latest = [string]$VersionInfo.LatestVersion
+
+    if ([string]::IsNullOrWhiteSpace($current) -or [string]::IsNullOrWhiteSpace($latest)) {
+        return $false
+    }
+
+    return $current -ne $latest
 }
 
 function Invoke-WingetInstallWithRetry {
@@ -625,7 +699,10 @@ function Format-WingetVersionMessage {
     }
 
     $current = if ([string]::IsNullOrWhiteSpace([string]$VersionInfo.CurrentVersion)) { 'unknown' } else { [string]$VersionInfo.CurrentVersion }
-    $latest = if ([string]::IsNullOrWhiteSpace([string]$VersionInfo.LatestVersion)) { $current } else { [string]$VersionInfo.LatestVersion }
+    $latest = Get-NormalizedLatestVersionForDisplay -CurrentVersion ([string]$VersionInfo.CurrentVersion) -LatestVersion ([string]$VersionInfo.LatestVersion)
+    if ([string]::IsNullOrWhiteSpace($latest)) {
+        $latest = $current
+    }
 
     return "$BaseMessage. Current: $current, Latest: $latest"
 }
@@ -678,11 +755,9 @@ function Get-WingetVersionSummary {
         'not installed'
     }
 
-    $latest = if ([string]::IsNullOrWhiteSpace([string]$VersionInfo.LatestVersion)) {
-        if ($VersionInfo.IsInstalled -and -not [string]::IsNullOrWhiteSpace([string]$VersionInfo.CurrentVersion)) { [string]$VersionInfo.CurrentVersion } else { 'unknown' }
-    }
-    else {
-        [string]$VersionInfo.LatestVersion
+    $latest = Get-NormalizedLatestVersionForDisplay -CurrentVersion ([string]$VersionInfo.CurrentVersion) -LatestVersion ([string]$VersionInfo.LatestVersion)
+    if ([string]::IsNullOrWhiteSpace($latest)) {
+        $latest = if ($VersionInfo.IsInstalled -and -not [string]::IsNullOrWhiteSpace([string]$VersionInfo.CurrentVersion)) { [string]$VersionInfo.CurrentVersion } else { 'unknown' }
     }
     return "Current: $current, Latest: $latest"
 }
@@ -760,11 +835,9 @@ function Format-VersionCheckLogMessage {
         'not installed'
     }
 
-    $latest = if ([string]::IsNullOrWhiteSpace([string]$VersionInfo.LatestVersion)) {
-        if ($VersionInfo.IsInstalled -and -not [string]::IsNullOrWhiteSpace([string]$VersionInfo.CurrentVersion)) { [string]$VersionInfo.CurrentVersion } else { 'unknown' }
-    }
-    else {
-        [string]$VersionInfo.LatestVersion
+    $latest = Get-NormalizedLatestVersionForDisplay -CurrentVersion ([string]$VersionInfo.CurrentVersion) -LatestVersion ([string]$VersionInfo.LatestVersion)
+    if ([string]::IsNullOrWhiteSpace($latest)) {
+        $latest = if ($VersionInfo.IsInstalled -and -not [string]::IsNullOrWhiteSpace([string]$VersionInfo.CurrentVersion)) { [string]$VersionInfo.CurrentVersion } else { 'unknown' }
     }
 
     return "Version check: Current = $current, Latest = $latest"
@@ -921,7 +994,71 @@ function Test-ShouldUpgradeInstalledApp {
         return $false
     }
 
-    return $current -ne $latest
+    $comparison = Compare-ComparableVersionStrings -Left $current -Right $latest
+    if ($comparison -eq $null) {
+        return $current -ne $latest
+    }
+
+    return $comparison -lt 0
+}
+
+function Get-NormalizedLatestVersionForDisplay {
+    [CmdletBinding()]
+    param(
+        [AllowNull()][AllowEmptyString()][string]$CurrentVersion,
+        [AllowNull()][AllowEmptyString()][string]$LatestVersion
+    )
+
+    if ([string]::IsNullOrWhiteSpace($LatestVersion)) {
+        return ''
+    }
+
+    if ([string]::IsNullOrWhiteSpace($CurrentVersion)) {
+        return [string]$LatestVersion
+    }
+
+    $comparison = Compare-ComparableVersionStrings -Left $CurrentVersion -Right $LatestVersion
+    if ($comparison -eq $null) {
+        return [string]$LatestVersion
+    }
+
+    if ($comparison -gt 0) {
+        # Avoid showing a misleading "Latest" value older than installed version.
+        return [string]$CurrentVersion
+    }
+
+    return [string]$LatestVersion
+}
+
+function Compare-ComparableVersionStrings {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Left,
+        [Parameter(Mandatory)][string]$Right
+    )
+
+    $leftParts = @($Left.Split('.') | ForEach-Object { $_.Trim() })
+    $rightParts = @($Right.Split('.') | ForEach-Object { $_.Trim() })
+    if ($leftParts.Count -eq 0 -or $rightParts.Count -eq 0) {
+        return $null
+    }
+
+    foreach ($part in @($leftParts + $rightParts)) {
+        if ($part -notmatch '^\d+$') {
+            return $null
+        }
+    }
+
+    $max = [Math]::Max($leftParts.Count, $rightParts.Count)
+    for ($i = 0; $i -lt $max; $i++) {
+        $l = if ($i -lt $leftParts.Count) { [int]$leftParts[$i] } else { 0 }
+        $r = if ($i -lt $rightParts.Count) { [int]$rightParts[$i] } else { 0 }
+
+        if ($l -lt $r) { return -1 }
+        if ($l -gt $r) { return 1 }
+    }
+
+    return 0
 }
 
 function ConvertTo-AlreadyPresentVersionInfo {

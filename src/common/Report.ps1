@@ -12,7 +12,7 @@ function New-ReportEntry {
     param(
         [Parameter(Mandatory)][string]$Module,
         [Parameter(Mandatory)][string]$Item,
-        [Parameter(Mandatory)][ValidateSet('ADDED', 'UPDATED', 'NONE', 'SKIPPED', 'ERROR', 'ORPHAN', 'INSTALLED', 'ALREADY_PRESENT')][string]$Status,
+        [Parameter(Mandatory)][ValidateSet('ADDED', 'UPDATED', 'NONE', 'SKIPPED', 'ERROR', 'ORPHAN', 'INSTALLED', 'ALREADY_PRESENT', 'DEFERRED')][string]$Status,
         [string]$Message = '',
         [TimeSpan]$Duration = [TimeSpan]::Zero
     )

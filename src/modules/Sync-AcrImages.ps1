@@ -85,7 +85,7 @@ function Invoke-AcrSync {
             $null = $reachableRegistries.Add($registry)
         }
         else {
-            $results.Add((New-ReportEntry -Module 'ACR' -Item "registry:$registry" -Status 'ERROR' -Message 'Registry not reachable. Verify ACR is open and network access is available.'))
+            Write-Log -Level Warning -Message "Registry '$registry' not reachable. Image freshness checks will be skipped for this registry."
         }
     }
 
@@ -123,9 +123,9 @@ function Invoke-AcrSync {
 
     if ($imagesInclude -contains '*') {
         foreach ($registry in $registries) {
-                if (-not $reachableRegistries.Contains($registry)) {
-                    continue
-                }
+            if (-not $reachableRegistries.Contains($registry)) {
+                continue
+            }
 
             $repoNames = @(Get-AcrRegistryRepositories -Registry $registry -RetryCount $retryCount -RetryDelaySeconds $retryDelay)
             foreach ($repoName in $repoNames) {
@@ -159,10 +159,6 @@ function Invoke-AcrSync {
             }
 
             foreach ($registry in $registries) {
-                if (-not $reachableRegistries.Contains($registry)) {
-                    continue
-                }
-
                 $resolvedImage = "$registry.azurecr.io/$includeImage"
                 if ($seen.Add($resolvedImage)) {
                     $shouldSync = Test-AcrIncludeExcludeMatch -Name $includeImage -IncludeTokens $imagesInclude -ExcludeTokens $imagesExclude
@@ -281,6 +277,10 @@ function Test-AcrRegistryReachable {
                 throw "Registry '$Registry' check-health failed"
             }
 
+            if (Test-AzOutputIndicatesFailure -Output @($health)) {
+                throw "Registry '$Registry' check-health reported errors"
+            }
+
             $healthText = (@($health) -join "`n")
             $hasHardHealthError = $false
 
@@ -305,8 +305,12 @@ function Test-AcrRegistryReachable {
         } | Out-Null
 
         Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "ACR reachability $Registry" -ScriptBlock {
-            $null = & az acr repository list --name $Registry --top 1 --only-show-errors --output tsv 2>&1
+            $probe = & az acr repository list --name $Registry --top 1 --only-show-errors --output tsv 2>&1
             if ($LASTEXITCODE -ne 0) {
+                throw "Registry '$Registry' not reachable"
+            }
+
+            if (Test-AzOutputIndicatesFailure -Output @($probe)) {
                 throw "Registry '$Registry' not reachable"
             }
         } | Out-Null
@@ -347,8 +351,12 @@ function Test-AcrImageFreshnessProbe {
 
     try {
         Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "ACR freshness probe $ResolvedImage" -ScriptBlock {
-            $null = & az acr repository show-tags --name $registry --repository $repositoryPath --top 1 --orderby time_desc --only-show-errors --output tsv 2>&1
+            $probe = & az acr repository show-tags --name $registry --repository $repositoryPath --top 1 --orderby time_desc --only-show-errors --output tsv 2>&1
             if ($LASTEXITCODE -ne 0) {
+                throw "Unable to verify image freshness for $ResolvedImage"
+            }
+
+            if (Test-AzOutputIndicatesFailure -Output @($probe)) {
                 throw "Unable to verify image freshness for $ResolvedImage"
             }
         } | Out-Null
@@ -364,6 +372,32 @@ function Test-AcrImageFreshnessProbe {
             Message = "Registry appears closed or unreachable: freshness cannot be verified for $ResolvedImage."
         }
     }
+}
+
+function Test-AzOutputIndicatesFailure {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object[]]$Output)
+
+    $text = (@($Output) -join "`n").ToLowerInvariant().Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $false
+    }
+
+    return (
+        $text -match '(^|\s)error\s*:' -or
+        $text -match '\bforbidden\b' -or
+        $text -match '\bunauthorized\b' -or
+        $text -match '\bdenied\b' -or
+        $text -match '\bnot found\b' -or
+        $text -match 'resource\s+not\s+found' -or
+        $text -match 'authentication\s+failed' -or
+        $text -match 'authorization\s+failed' -or
+        $text -match 'failed to establish a new connection' -or
+        $text -match 'name or service not known' -or
+        $text -match 'could not resolve' -or
+        $text -match 'connection refused' -or
+        $text -match 'timed out'
+    )
 }
 
 function Test-AcrIncludeExcludeMatch {

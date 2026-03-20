@@ -5,6 +5,134 @@
     Shared utility helpers for dev-bootstrap.
 #>
 
+$script:_DeferredActions = [System.Collections.Generic.List[hashtable]]::new()
+
+function Clear-DeferredActions {
+    [CmdletBinding()]
+    param()
+
+    $script:_DeferredActions.Clear()
+}
+
+function Add-DeferredAction {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Key,
+        [Parameter(Mandatory)][string]$Title,
+        [Parameter(Mandatory)][string]$Command
+    )
+
+    $exists = @($script:_DeferredActions | Where-Object { ([string]$_.Key).Equals($Key, [System.StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+    if ($exists) {
+        return $false
+    }
+
+    $script:_DeferredActions.Add(@{
+            Key = $Key
+            Title = $Title
+            Command = $Command
+        })
+
+    return $true
+}
+
+function Get-DeferredActions {
+    [CmdletBinding()]
+    param()
+
+    return @($script:_DeferredActions)
+}
+
+function Invoke-DeferredActions {
+    [CmdletBinding()]
+    param(
+        [switch]$Silent,
+        [switch]$NoConfirm
+    )
+
+    $actions = @(Get-DeferredActions)
+    if ($actions.Count -eq 0) {
+        return
+    }
+
+    Write-Log -Level Info -Message ''
+    Write-Log -Level Warning -Message "Deferred actions pending: $($actions.Count)"
+
+    foreach ($action in $actions) {
+        $title = [string]$action.Title
+        $command = [string]$action.Command
+        if ([string]::IsNullOrWhiteSpace($title) -or [string]::IsNullOrWhiteSpace($command)) {
+            continue
+        }
+
+        if ($Silent -or $NoConfirm -or -not [System.Environment]::UserInteractive) {
+            Write-Log -Level Warning -Message "Deferred action not started automatically: $title"
+            Write-Log -Level Warning -Message "Run manually: $command"
+            continue
+        }
+
+        $startNow = Read-UserYesNo -Prompt "Start deferred action now in a new window? $title (Y/n)"
+        if (-not $startNow) {
+            Write-Log -Level Warning -Message "Deferred action skipped by user: $title"
+            Write-Log -Level Warning -Message "Run manually: $command"
+            continue
+        }
+
+        if (Start-DetachedPwshCommand -Command $command -Title $title) {
+            Write-Log -Level Info -Message "Deferred action started: $title"
+        }
+        else {
+            Write-Log -Level Warning -Message "Unable to start deferred action automatically: $title"
+            Write-Log -Level Warning -Message "Run manually: $command"
+        }
+    }
+
+    Clear-DeferredActions
+}
+
+function Start-DetachedPwshCommand {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Command,
+        [Parameter(Mandatory)][string]$Title
+    )
+
+    if (-not (Test-IsWindows)) {
+        return $false
+    }
+
+    try {
+        $wrappedCommand = "$Command; Write-Host ''; Write-Host '$Title completed.'; Read-Host 'Press ENTER to close'"
+        Start-Process -FilePath 'pwsh' -ArgumentList @('-NoExit', '-Command', $wrappedCommand) -WindowStyle Normal | Out-Null
+        return $true
+    }
+    catch {
+        Write-Log -Level Warning -Message "Unable to launch deferred action window for '$Title': $_"
+        return $false
+    }
+}
+
+function Read-UserYesNo {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Prompt,
+        [bool]$DefaultYes = $true
+    )
+
+    try {
+        $value = Read-Host -Prompt $Prompt
+    }
+    catch {
+        return $false
+    }
+
+    if ([string]::IsNullOrWhiteSpace([string]$value)) {
+        return $DefaultYes
+    }
+
+    return ([string]$value).Trim().ToLowerInvariant() -in @('y', 'yes')
+}
+
 function Invoke-WithRetry {
     <#
     .SYNOPSIS
