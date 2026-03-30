@@ -363,6 +363,7 @@ function Install-ViaWinget {
             return @{ Status = 'DEFERRED'; Message = $msg; VersionInfo = $deferredVersionInfo }
         }
 
+        Write-ConsoleStatus -Message "  Upgrading $($App.name) via winget (this may take several minutes)..."
         $upgradeResult = Invoke-WingetUpgradeWithRetry -App $App -AppId $appId
         if ($upgradeResult.ExitCode -eq 0) {
             $postVersionInfo = Get-WingetVersionInfo -AppId $appId
@@ -386,6 +387,7 @@ function Install-ViaWinget {
         return @{ Status = 'ERROR'; Message = (Get-WingetFailureMessage -Operation 'upgrade' -ExitCode $upgradeResult.ExitCode -Output $upgradeResult.Output -VersionInfo $versionInfo) }
     }
 
+    Write-ConsoleStatus -Message "  Installing $($App.name) via winget (this may take several minutes)..."
     $installResult = Invoke-WingetInstallWithRetry -App $App -AppId $appId
     if ($installResult.ExitCode -eq 0) {
         $postVersionInfo = Get-WingetVersionInfo -AppId $appId
@@ -395,6 +397,7 @@ function Install-ViaWinget {
     if (Test-WingetAlreadyInstalledOutput -Output $installResult.Output) {
         $existingVersionInfo = ConvertTo-AlreadyPresentVersionInfo -VersionInfo (Get-WindowsAppVersionInfo -App $App)
 
+        Write-ConsoleStatus -Message "  Upgrading $($App.name) via winget (this may take several minutes)..."
         $upgradeResult = Invoke-WingetUpgradeWithRetry -App $App -AppId $appId
         if ($upgradeResult.ExitCode -eq 0) {
             $postVersionInfo = Get-WingetVersionInfo -AppId $appId
@@ -1341,6 +1344,7 @@ function Install-LinuxApp {
         return @{ Status = 'ERROR'; Message = "Unsupported Linux package manager: $($PackageManager.Name)" }
     }
 
+    Write-ConsoleStatus -Message "  Installing $($App.name) via $($PackageManager.Name) (this may take several minutes)..."
     $null = & bash -c $installCommand 2>&1
     if ($LASTEXITCODE -eq 0) {
         return @{ Status = 'INSTALLED'; Message = "Installed via $($PackageManager.Name)" }

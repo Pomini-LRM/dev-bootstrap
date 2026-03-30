@@ -139,6 +139,22 @@ function Stop-StepTimer {
     return $elapsed
 }
 
+function Write-ConsoleStatus {
+    <#
+    .SYNOPSIS
+        Writes a transient status message to console only (not persisted to log file).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Message
+    )
+
+    if (-not $script:_LogSilent) {
+        Write-Host $Message -ForegroundColor DarkCyan
+    }
+}
+
 function Get-LogFilePath {
     return $script:_LogFilePath
 }

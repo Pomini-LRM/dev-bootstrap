@@ -48,6 +48,30 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Guard: warn if ExecutionPolicy is not Bypass.
+$currentPolicy = Get-ExecutionPolicy
+if ($currentPolicy -notin @('Bypass', 'Unrestricted')) {
+    Write-Host '' -ForegroundColor Yellow
+    Write-Host "Current ExecutionPolicy: $currentPolicy" -ForegroundColor Yellow
+    Write-Host 'Running without -ExecutionPolicy Bypass may cause script execution restrictions.' -ForegroundColor Yellow
+    Write-Host '' -ForegroundColor Yellow
+    $answer = Read-Host 'Restart with -ExecutionPolicy Bypass? [Y/n]'
+    if ([string]::IsNullOrWhiteSpace($answer) -or $answer.Trim().ToLowerInvariant() -in @('y', 'yes')) {
+        $argList = @('-ExecutionPolicy', 'Bypass', '-File', $MyInvocation.MyCommand.Path)
+        foreach ($p in $PSBoundParameters.GetEnumerator()) {
+            if ($p.Value -is [switch]) {
+                if ($p.Value.IsPresent) { $argList += "-$($p.Key)" }
+            } else {
+                $argList += "-$($p.Key)"
+                $argList += "$($p.Value)"
+            }
+        }
+        $proc = Start-Process -FilePath 'pwsh' -ArgumentList $argList -Wait -NoNewWindow -PassThru
+        exit $proc.ExitCode
+    }
+    Write-Host 'Continuing with current ExecutionPolicy.' -ForegroundColor DarkGray
+}
+
 $projectRoot = $PSScriptRoot
 
 . (Join-Path $projectRoot 'src' 'common' 'Logger.ps1')

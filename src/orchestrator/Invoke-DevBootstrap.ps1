@@ -137,11 +137,16 @@ function Invoke-DevBootstrap {
 
             $moduleErrorCount = @($moduleResultList | Where-Object { $_.Status -eq 'ERROR' }).Count
             $moduleInsUpdCount = @($moduleResultList | Where-Object { $_.Status -in @('INSTALLED', 'UPDATED') }).Count
+            $moduleSkippedCount = @($moduleResultList | Where-Object { $_.Status -eq 'SKIPPED' }).Count
             $modulePresSkpCount = [Math]::Max(0, $moduleItemCount - $moduleErrorCount - $moduleInsUpdCount)
             if ($moduleErrorCount -gt 0) {
                 $moduleStatus = 'ERROR'
                 Write-Log -Level Warning -Message "Module $($module.Label) completed with $moduleErrorCount errors."
                 if ($failFast) { $hasCriticalError = $true }
+            }
+            elseif ($moduleSkippedCount -eq $moduleItemCount -and $moduleItemCount -gt 0) {
+                $moduleStatus = 'WARNING'
+                Write-Log -Level Warning -Message "Module $($module.Label) completed with all items skipped."
             }
         }
         catch {
