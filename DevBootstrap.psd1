@@ -1,6 +1,6 @@
 @{
     RootModule           = 'DevBootstrap.psm1'
-    ModuleVersion        = '1.9.0'
+    ModuleVersion        = '1.10.0'
     GUID                 = '267d2bb1-fdd5-4f02-a643-d3c74d5ae786'
     Author               = 'POMINI Long Rolling Mills'
     CompanyName          = 'POMINI Long Rolling Mills'
@@ -17,6 +17,7 @@
         }
     }
 }
+
 
 
 

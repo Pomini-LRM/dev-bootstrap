@@ -363,6 +363,13 @@ function Install-ViaWinget {
             return @{ Status = 'DEFERRED'; Message = $msg; VersionInfo = $deferredVersionInfo }
         }
 
+        $currentVer = [string]$versionInfo.CurrentVersion
+        $latestVer = [string]$versionInfo.LatestVersion
+        if (-not [string]::IsNullOrWhiteSpace($currentVer) -and -not [string]::IsNullOrWhiteSpace($latestVer) -and $currentVer -eq $latestVer) {
+            $existingVersionInfo = ConvertTo-AlreadyPresentVersionInfo -VersionInfo $versionInfo
+            return @{ Status = 'ALREADY_PRESENT'; Message = (Format-WingetVersionMessage -BaseMessage 'Already up to date (winget)' -VersionInfo $existingVersionInfo) }
+        }
+
         Write-ConsoleStatus -Message "  Upgrading $($App.name) via winget (this may take several minutes)..."
         $upgradeResult = Invoke-WingetUpgradeWithRetry -App $App -AppId $appId
         if ($upgradeResult.ExitCode -eq 0) {

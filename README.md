@@ -23,6 +23,8 @@ Cross-platform environment bootstrap suite for PowerShell 7+.
   - [Modules](#modules)
     - [appInstaller](#appinstaller)
     - [automation](#automation)
+      - [Adding a new automation script](#adding-a-new-automation-script)
+      - [Migration from `configurations`](#migration-from-configurations)
     - [github](#github)
     - [devops](#devops)
     - [acr](#acr)
@@ -83,7 +85,7 @@ pwsh .\scripts\setup-config-interactive.ps1
 # Option B: manual file copy
 Copy-Item .\.env.example .\.env
 
-pwsh .\dev-bootstrap.ps1
+pwsh -ExecutionPolicy Bypass .\dev-bootstrap.ps1
 ```
 
 Execution policy note:
