@@ -7,12 +7,6 @@
       "scriptFile": "Set-ConfigurationAddMakePath.ps1"
     },
     {
-      "key": "addCopilotChatKeybindings",
-      "name": "Add Copilot Chat Keybindings",
-      "description": "Copy template keybindings.json to %APPDATA%\\Code\\User.",
-      "scriptFile": "Set-ConfigurationCopilotChatKeybindings.ps1"
-    },
-    {
       "key": "setGitHubUser",
       "name": "Set GitHub user",
       "description": "Set global git user.name and user.email.",
