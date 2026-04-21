@@ -87,11 +87,12 @@ function Invoke-GitHubSync {
     }
 
     $gitHubUsername = if (-not [string]::IsNullOrWhiteSpace([string]$authResult.Login)) { [string]$authResult.Login } else { 'git' }
+    $authenticatedLogin = if (-not [string]::IsNullOrWhiteSpace([string]$authResult.Login)) { [string]$authResult.Login } else { '' }
 
     $retryCount = if ($moduleConfig.retryCount) { [int]$moduleConfig.retryCount } else { 3 }
     $retryDelay = if ($moduleConfig.retryDelaySeconds) { [int]$moduleConfig.retryDelaySeconds } else { 5 }
 
-    $repos = Get-AllVisibleGitHubRepos -Headers $headers -RetryCount $retryCount -RetryDelaySeconds $retryDelay
+    $repos = Get-AllVisibleGitHubRepos -Headers $headers -RetryCount $retryCount -RetryDelaySeconds $retryDelay -AuthenticatedUser $authenticatedLogin
     if (@($repos).Count -eq 0) {
         Write-Log -Level Warning -Message 'No GitHub repositories returned by the token.'
         return $results
@@ -160,22 +161,111 @@ function Invoke-GitHubSync {
 }
 
 function Get-AllVisibleGitHubRepos {
+    <#
+    .SYNOPSIS
+        Aggregates all GitHub repositories visible to the token, ensuring public
+        repos are always included even when the token has limited scopes.
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$Headers,
         [int]$RetryCount = 3,
-        [int]$RetryDelaySeconds = 5
+        [int]$RetryDelaySeconds = 5,
+        [string]$AuthenticatedUser = ''
     )
 
     $all = [System.Collections.Generic.List[object]]::new()
+    $seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+
+    # Primary: repos the token grants explicit access to (private + scoped public).
+    $tokenRepos = Get-GitHubReposPaginated `
+        -BaseUrl 'https://api.github.com/user/repos?visibility=all&affiliation=owner,collaborator,organization_member' `
+        -Headers $Headers -RetryCount $RetryCount -RetryDelaySeconds $RetryDelaySeconds `
+        -Label '/user/repos'
+
+    foreach ($repo in $tokenRepos) {
+        $fullName = [string]$repo.full_name
+        if ($seen.Add($fullName)) {
+            $all.Add($repo)
+        }
+    }
+
+    Write-Log -Level Info -Message "Primary fetch returned $($all.Count) repositories."
+
+    # Supplementary: public repos owned by the authenticated user.
+    if (-not [string]::IsNullOrWhiteSpace($AuthenticatedUser)) {
+        $userPublicRepos = Get-GitHubReposPaginated `
+            -BaseUrl "https://api.github.com/users/$AuthenticatedUser/repos?type=owner" `
+            -Headers $Headers -RetryCount $RetryCount -RetryDelaySeconds $RetryDelaySeconds `
+            -Label "/users/$AuthenticatedUser/repos"
+
+        $added = 0
+        foreach ($repo in $userPublicRepos) {
+            $fullName = [string]$repo.full_name
+            if ($seen.Add($fullName)) {
+                $all.Add($repo)
+                $added++
+            }
+        }
+
+        if ($added -gt 0) {
+            Write-Log -Level Info -Message "Supplementary user fetch added $added public repositories."
+        }
+    }
+
+    # Supplementary: public repos from user's organizations.
+    if (-not [string]::IsNullOrWhiteSpace($AuthenticatedUser)) {
+        $orgs = Get-GitHubUserOrganizations -Headers $Headers -RetryCount $RetryCount -RetryDelaySeconds $RetryDelaySeconds
+        foreach ($org in $orgs) {
+            $orgLogin = [string]$org.login
+            $orgRepos = Get-GitHubReposPaginated `
+                -BaseUrl "https://api.github.com/orgs/$orgLogin/repos" `
+                -Headers $Headers -RetryCount $RetryCount -RetryDelaySeconds $RetryDelaySeconds `
+                -Label "/orgs/$orgLogin/repos"
+
+            $added = 0
+            foreach ($repo in $orgRepos) {
+                $fullName = [string]$repo.full_name
+                if ($seen.Add($fullName)) {
+                    $all.Add($repo)
+                    $added++
+                }
+            }
+
+            if ($added -gt 0) {
+                Write-Log -Level Info -Message "Supplementary org fetch for '$orgLogin' added $added repositories."
+            }
+        }
+    }
+
+    Write-Log -Level Info -Message "Total unique repositories: $($all.Count)."
+    return $all
+}
+
+function Get-GitHubReposPaginated {
+    <#
+    .SYNOPSIS
+        Fetches GitHub repositories from a paginated API endpoint.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$BaseUrl,
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [int]$RetryCount = 3,
+        [int]$RetryDelaySeconds = 5,
+        [string]$Label = 'repos'
+    )
+
+    $results = [System.Collections.Generic.List[object]]::new()
     $page = 1
     $perPage = 100
+    $separator = if ($BaseUrl.Contains('?')) { '&' } else { '?' }
 
     while ($true) {
-        $url = "https://api.github.com/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&per_page=$perPage&page=$page&sort=full_name"
-        Write-Log -Level Info -Message "GitHub API request: GET /user/repos page=$page per_page=$perPage"
+        $url = "${BaseUrl}${separator}per_page=$perPage&page=$page&sort=full_name"
+        Write-Log -Level Info -Message "GitHub API request: GET $Label page=$page per_page=$perPage"
 
-        $response = Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "GitHub page $page" -ScriptBlock {
+        $response = Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "GitHub $Label page $page" -ScriptBlock {
             Invoke-WebRequest -Uri $url -Headers $Headers -Method GET
         }
 
@@ -187,6 +277,7 @@ function Get-AllVisibleGitHubRepos {
         $requestId = Get-HttpHeaderValue -Headers $response.Headers -Name 'X-GitHub-Request-Id'
         $itemsCount = @($items).Count
         Write-GitHubKeyValueBlock -Title 'GitHub API response' -Data ([ordered]@{
+            endpoint = $Label
             page = $page
             count = $itemsCount
             requestId = $requestId
@@ -196,7 +287,7 @@ function Get-AllVisibleGitHubRepos {
             break
         }
 
-        $all.AddRange(@($items))
+        $results.AddRange(@($items))
         if (@($items).Count -lt $perPage) {
             break
         }
@@ -204,7 +295,57 @@ function Get-AllVisibleGitHubRepos {
         $page++
     }
 
-    return $all
+    return $results
+}
+
+function Get-GitHubUserOrganizations {
+    <#
+    .SYNOPSIS
+        Fetches the list of organizations for the authenticated user.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$Headers,
+        [int]$RetryCount = 3,
+        [int]$RetryDelaySeconds = 5
+    )
+
+    $results = [System.Collections.Generic.List[object]]::new()
+    $page = 1
+    $perPage = 100
+
+    while ($true) {
+        $url = "https://api.github.com/user/orgs?per_page=$perPage&page=$page"
+        Write-Log -Level Info -Message "GitHub API request: GET /user/orgs page=$page per_page=$perPage"
+
+        try {
+            $response = Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "GitHub orgs page $page" -ScriptBlock {
+                Invoke-WebRequest -Uri $url -Headers $Headers -Method GET
+            }
+
+            $items = @()
+            if ($null -ne $response -and -not [string]::IsNullOrWhiteSpace([string]$response.Content)) {
+                $items = @($response.Content | ConvertFrom-Json)
+            }
+
+            if ($null -eq $items -or @($items).Count -eq 0) {
+                break
+            }
+
+            $results.AddRange(@($items))
+            if (@($items).Count -lt $perPage) {
+                break
+            }
+
+            $page++
+        }
+        catch {
+            Write-Log -Level Warning -Message "Unable to fetch organization list: $_"
+            break
+        }
+    }
+
+    return $results
 }
 
 function Test-GitHubRepoIncluded {

@@ -74,6 +74,87 @@ Describe 'ACR diagnostics helpers' {
     }
 }
 
+Describe 'GitHub repo deduplication' {
+    It 'deduplicates repos by full_name across multiple API sources' {
+        $mockHeaders = @{ Authorization = 'Bearer fake-token'; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
+
+        Mock -CommandName Invoke-WebRequest -MockWith {
+            $uriStr = [string]$Uri
+
+            if ($uriStr -match '/user/repos') {
+                $body = @(
+                    @{ full_name = 'owner/private-repo'; name = 'private-repo'; owner = @{ login = 'owner'; type = 'User' }; clone_url = 'https://github.com/owner/private-repo.git' }
+                    @{ full_name = 'owner/public-repo'; name = 'public-repo'; owner = @{ login = 'owner'; type = 'User' }; clone_url = 'https://github.com/owner/public-repo.git' }
+                ) | ConvertTo-Json -Depth 5
+                return @{ Content = $body; Headers = @{ 'X-GitHub-Request-Id' = 'test-1' } }
+            }
+
+            if ($uriStr -match '/users/owner/repos') {
+                $body = @(
+                    @{ full_name = 'owner/public-repo'; name = 'public-repo'; owner = @{ login = 'owner'; type = 'User' }; clone_url = 'https://github.com/owner/public-repo.git' }
+                    @{ full_name = 'owner/extra-public'; name = 'extra-public'; owner = @{ login = 'owner'; type = 'User' }; clone_url = 'https://github.com/owner/extra-public.git' }
+                ) | ConvertTo-Json -Depth 5
+                return @{ Content = $body; Headers = @{ 'X-GitHub-Request-Id' = 'test-2' } }
+            }
+
+            if ($uriStr -match '/user/orgs') {
+                return @{ Content = '[]'; Headers = @{ 'X-GitHub-Request-Id' = 'test-3' } }
+            }
+
+            return @{ Content = '[]'; Headers = @{} }
+        }
+
+        $repos = Get-AllVisibleGitHubRepos -Headers $mockHeaders -RetryCount 1 -RetryDelaySeconds 0 -AuthenticatedUser 'owner'
+
+        @($repos).Count | Should -Be 3
+        @($repos | ForEach-Object { $_.full_name }) | Should -Contain 'owner/private-repo'
+        @($repos | ForEach-Object { $_.full_name }) | Should -Contain 'owner/public-repo'
+        @($repos | ForEach-Object { $_.full_name }) | Should -Contain 'owner/extra-public'
+    }
+
+    It 'includes org public repos via supplementary fetch' {
+        $mockHeaders = @{ Authorization = 'Bearer fake-token'; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
+
+        Mock -CommandName Invoke-WebRequest -MockWith {
+            $uriStr = [string]$Uri
+
+            if ($uriStr -match '/user/repos') {
+                $body = @(
+                    @{ full_name = 'my-org/internal-repo'; name = 'internal-repo'; owner = @{ login = 'my-org'; type = 'Organization' }; clone_url = 'https://github.com/my-org/internal-repo.git' }
+                ) | ConvertTo-Json -Depth 5
+                return @{ Content = $body; Headers = @{ 'X-GitHub-Request-Id' = 'test-1' } }
+            }
+
+            if ($uriStr -match '/users/testuser/repos') {
+                return @{ Content = '[]'; Headers = @{ 'X-GitHub-Request-Id' = 'test-2' } }
+            }
+
+            if ($uriStr -match '/user/orgs') {
+                $body = @(
+                    @{ login = 'my-org' }
+                ) | ConvertTo-Json -Depth 5
+                return @{ Content = $body; Headers = @{ 'X-GitHub-Request-Id' = 'test-3' } }
+            }
+
+            if ($uriStr -match '/orgs/my-org/repos') {
+                $body = @(
+                    @{ full_name = 'my-org/internal-repo'; name = 'internal-repo'; owner = @{ login = 'my-org'; type = 'Organization' }; clone_url = 'https://github.com/my-org/internal-repo.git' }
+                    @{ full_name = 'my-org/public-lib'; name = 'public-lib'; owner = @{ login = 'my-org'; type = 'Organization' }; clone_url = 'https://github.com/my-org/public-lib.git' }
+                ) | ConvertTo-Json -Depth 5
+                return @{ Content = $body; Headers = @{ 'X-GitHub-Request-Id' = 'test-4' } }
+            }
+
+            return @{ Content = '[]'; Headers = @{} }
+        }
+
+        $repos = Get-AllVisibleGitHubRepos -Headers $mockHeaders -RetryCount 1 -RetryDelaySeconds 0 -AuthenticatedUser 'testuser'
+
+        @($repos).Count | Should -Be 2
+        @($repos | ForEach-Object { $_.full_name }) | Should -Contain 'my-org/internal-repo'
+        @($repos | ForEach-Object { $_.full_name }) | Should -Contain 'my-org/public-lib'
+    }
+}
+
 Describe 'ACR result coherence' {
     It 'reports one skipped entry per included image when registry is unreachable' {
         [System.Environment]::SetEnvironmentVariable('AZURE_TENANT_ID', '51835014-d218-4754-b420-16de4790eedf', 'Process')

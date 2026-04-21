@@ -434,6 +434,7 @@ The former `configurations` module has been renamed to `automation`. If your `co
 ### github
 
 - Syncs repositories visible to the authenticated token.
+- **Public repositories are always included** regardless of token scope. The module supplements the primary API call with dedicated public repo fetches for the authenticated user and their organizations.
 - Supports user and organization include/exclude filters.
 - Full pagination and retry.
 - Detects local orphan repositories.
