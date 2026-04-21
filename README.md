@@ -62,7 +62,17 @@ These are the **minimum prerequisites required to run dev-bootstrap itself**:
 
 Use dedicated bootstrap scripts:
 
-- Windows: [scripts/install-prerequisites-windows.ps1](scripts/install-prerequisites-windows.ps1)
+- Windows (PowerShell available): [scripts/install-prerequisites-windows.ps1](scripts/install-prerequisites-windows.ps1)
+- Windows (no PowerShell): [scripts/install-powershell.cmd](scripts/install-powershell.cmd)
+- Linux: [scripts/install-prerequisites-linux.sh](scripts/install-prerequisites-linux.sh)
+
+If PowerShell is not installed at all (neither `pwsh` nor `powershell`), use the CMD-based installer:
+
+```cmd
+scripts\install-powershell.cmd
+```
+
+This script installs PowerShell 7 via `winget` from a plain CMD environment. After installation, close and reopen the terminal, then proceed with the normal setup flow.
 - Linux: [scripts/install-prerequisites-linux.sh](scripts/install-prerequisites-linux.sh)
 
 Module-specific dependencies are not listed as global prerequisites. They are automatically handled by `appInstaller` when the related modules are enabled.
@@ -76,6 +86,8 @@ Module-specific dependencies are not listed as global prerequisites. They are au
 
 ### Windows
 
+If PowerShell is already available:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install-prerequisites-windows.ps1
 
@@ -85,6 +97,15 @@ pwsh .\scripts\setup-config-interactive.ps1
 # Option B: manual file copy
 Copy-Item .\.env.example .\.env
 
+pwsh -ExecutionPolicy Bypass .\dev-bootstrap.ps1
+```
+
+If PowerShell is **not installed** (new machine without `pwsh` or `powershell`):
+
+```cmd
+scripts\install-powershell.cmd
+REM Close and reopen the terminal after installation, then continue:
+powershell -ExecutionPolicy Bypass -File .\scripts\install-prerequisites-windows.ps1
 pwsh -ExecutionPolicy Bypass .\dev-bootstrap.ps1
 ```
 

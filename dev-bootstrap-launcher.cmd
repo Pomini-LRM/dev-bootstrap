@@ -17,10 +17,26 @@ if %errorlevel%==0 (
 )
 :offerInstall
 echo.
+where powershell >nul 2>nul
+if %errorlevel% neq 0 (
+  echo Windows PowerShell is not available either. Using CMD-based installer.
+  echo.
+  set /p RUN_CMD=Do you want to install PowerShell 7 via winget now? [Y/n]: 
+  if /I "%RUN_CMD%"=="" goto :runCmdInstall
+  if /I "%RUN_CMD%"=="y" goto :runCmdInstall
+  if /I "%RUN_CMD%"=="yes" goto :runCmdInstall
+  goto :end
+)
 set /p RUN_PREP=Do you want to run scripts\install-prerequisites-windows.ps1 now? [Y/n]: 
 if /I "%RUN_PREP%"=="" goto :runInstall
 if /I "%RUN_PREP%"=="y" goto :runInstall
 if /I "%RUN_PREP%"=="yes" goto :runInstall
+goto :end
+
+:runCmdInstall
+call "%~dp0scripts\install-powershell.cmd"
+echo.
+echo Re-run dev-bootstrap launcher after reopening the terminal.
 goto :end
 
 :runInstall
