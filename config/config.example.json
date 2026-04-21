@@ -32,7 +32,6 @@
       "enabled": false,
       "catalog": {
         "addMakePath": true,
-        "addCopilotChatKeybindings": true,
         "setGitHubUser": false,
         "desktopLinkForThisApplication": false
       },

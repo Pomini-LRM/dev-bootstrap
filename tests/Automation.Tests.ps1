@@ -25,7 +25,6 @@ Describe 'Automation catalog' {
         $catalog = Read-AutomationCatalog -ProjectRoot $projectRoot
         @($catalog.automations).Count | Should -Be 4
         @($catalog.automations | ForEach-Object { $_.key }) | Should -Contain 'addMakePath'
-        @($catalog.automations | ForEach-Object { $_.key }) | Should -Contain 'addCopilotChatKeybindings'
         @($catalog.automations | ForEach-Object { $_.key }) | Should -Contain 'setGitHubUser'
         @($catalog.automations | ForEach-Object { $_.key }) | Should -Contain 'desktopLinkForThisApplication'
     }
