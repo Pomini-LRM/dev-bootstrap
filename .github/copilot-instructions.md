@@ -16,10 +16,14 @@ GitHub/DevOps repositories, and pulls ACR container images through a modular orc
 
 ## Static Analysis
 
-- Linter: **PSScriptAnalyzer** with settings in `PSScriptAnalyzerSettings.psd1`.
-- Run before committing:
+- Linter and formatter: **PSScriptAnalyzer** (`Invoke-ScriptAnalyzer`, `Invoke-Formatter`) with settings in `PSScriptAnalyzerSettings.psd1`.
+- Preferred local quality command:
   ```powershell
-  Invoke-ScriptAnalyzer -Path src, tests -Recurse -Settings .\PSScriptAnalyzerSettings.psd1
+  pwsh .\scripts\Invoke-CodeQuality.ps1
+  ```
+- If formatting drift exists, run:
+  ```powershell
+  pwsh .\scripts\Invoke-CodeQuality.ps1 -FixFormat
   ```
 - Error-severity issues are blocking. Warnings should be resolved when practical.
 
@@ -27,11 +31,11 @@ GitHub/DevOps repositories, and pulls ACR container images through a modular orc
 
 - Framework: **Pester 5+**.
 - Tests live in `tests/` with `*.Tests.ps1` naming.
-- Run the full suite:
+- Run the full suite directly when needed:
   ```powershell
-  Invoke-Pester -Path tests -Output Detailed
+  Invoke-Pester -Path .\tests -Output Detailed
   ```
-- After every code change, run lint + tests to verify correctness.
+- After every code change, run format + lint + tests to verify correctness.
 - Write tests for new public functions and bug fixes.
 
 ## Project Structure
@@ -61,9 +65,9 @@ tests/           Pester test files
 
 1. Read the target file(s) to understand existing patterns.
 2. Follow the same code style and conventions already in the file.
-3. Run PSScriptAnalyzer after changes.
-4. Run Pester tests after changes.
-5. Update documentation (README, inline help) when behavior changes.
+3. Run `pwsh .\scripts\Invoke-CodeQuality.ps1` after changes.
+4. Update documentation (README, inline help) when behavior changes.
+5. Keep `src/automation/`, `config/automation.catalog.json`, `config/config.example.json`, and tests aligned for automation changes.
 6. Do not add unnecessary abstractions, comments, or features beyond what is requested.
 
 ## Do Not
