@@ -217,12 +217,19 @@ function Invoke-AcrSync {
         $resolvedImage = [string]$item.ResolvedImage
 
         try {
+            Write-ConsoleStatus -Message "  Pulling image '$resolvedImage' (download in progress, this may take several minutes)..."
+
             $pullResult = Invoke-WithRetry -MaxRetries $retryCount -BaseDelaySeconds $retryDelay -OperationName "docker pull $resolvedImage" -ScriptBlock {
-                $pull = & docker pull $resolvedImage 2>&1
+                $captured = [System.Collections.Generic.List[string]]::new()
+                & docker pull $resolvedImage 2>&1 | ForEach-Object {
+                    $line = [string]$_
+                    $captured.Add($line)
+                    Write-ConsoleStatus -Message "    $line"
+                }
                 if ($LASTEXITCODE -ne 0) {
                     throw "docker pull failed"
                 }
-                return ($pull -join "`n")
+                return ($captured -join "`n")
             }
 
             $timer.Stop()
@@ -271,38 +278,43 @@ function Test-AcrRegistryReachable {
     )
 
     try {
-        Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "ACR check-health $Registry" -ScriptBlock {
+        try {
             $health = & az acr check-health --name $Registry --yes --ignore-errors --output json 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                throw "Registry '$Registry' check-health failed"
-            }
-
-            if (Test-AzOutputIndicatesFailure -Output @($health)) {
-                throw "Registry '$Registry' check-health reported errors"
-            }
-
             $healthText = (@($health) -join "`n")
-            $hasHardHealthError = $false
+            $healthExit = $LASTEXITCODE
 
-            foreach ($line in @($health)) {
-                $lineText = [string]$line
-                if ($lineText -match 'An error occurred:\s+(\S+)') {
-                    $code = [string]$Matches[1]
-                    if ($code -notin @('HELM_COMMAND_ERROR', 'NOTARY_COMMAND_ERROR')) {
-                        $hasHardHealthError = $true
-                        break
-                    }
+            $challengeOk = $healthText -match 'Challenge endpoint .* : OK'
+            $tokenOk = $healthText -match 'Fetch access token .* : OK'
+
+            if ($challengeOk -and $tokenOk) {
+                if ($healthExit -ne 0) {
+                    Write-Log -Level Debug -Message "ACR check-health for '$Registry' returned exit $healthExit but core endpoints are OK; treating as healthy."
                 }
             }
+            else {
+                $hasHardHealthError = $false
+                foreach ($line in @($health)) {
+                    $lineText = [string]$line
+                    if ($lineText -match 'An error occurred:\s+(\S+)') {
+                        $code = [string]$Matches[1]
+                        if ($code -notin @('HELM_COMMAND_ERROR', 'NOTARY_COMMAND_ERROR')) {
+                            $hasHardHealthError = $true
+                            break
+                        }
+                    }
+                }
 
-            if (
-                $hasHardHealthError -or
-                $healthText -notmatch 'Challenge endpoint .* : OK' -or
-                $healthText -notmatch 'Fetch access token .* : OK'
-            ) {
-                throw "Registry '$Registry' health indicates it is not open/reachable"
+                if ($hasHardHealthError) {
+                    Write-Log -Level Warning -Message "ACR check-health for '$Registry' reported a hard error; falling back to repository probe."
+                }
+                else {
+                    Write-Log -Level Debug -Message "ACR check-health for '$Registry' did not report core endpoints OK; falling back to repository probe."
+                }
             }
-        } | Out-Null
+        }
+        catch {
+            Write-Log -Level Warning -Message "ACR check-health for '$Registry' threw an exception; falling back to repository probe: $_"
+        }
 
         Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "ACR reachability $Registry" -ScriptBlock {
             $probe = & az acr repository list --name $Registry --top 1 --only-show-errors --output tsv 2>&1
