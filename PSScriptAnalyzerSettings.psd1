@@ -4,22 +4,38 @@
     ExcludeRules = @(
         'PSUseShouldProcessForStateChangingFunctions'
         'PSAvoidUsingWriteHost'
+        'PSUseSingularNouns'
+        'PSReviewUnusedParameter'
+        'PSUseBOMForUnicodeEncodedFile'
+        'PSAvoidOverwritingBuiltInCmdlets'
     )
     Rules        = @{
-        PSUseCompatibleSyntax = @{
+        PSUseCompatibleSyntax            = @{
             Enable         = $true
             TargetVersions = @('7.0')
         }
-        PSAvoidUsingCmdletAliases = @{ Enable = $true }
+        PSAvoidUsingCmdletAliases        = @{ Enable = $true }
         PSAvoidUsingPositionalParameters = @{ Enable = $true }
-        PSUseApprovedVerbs = @{ Enable = $true }
-        PSUseConsistentIndentation = @{
+        PSUseApprovedVerbs               = @{ Enable = $true }
+        PSPlaceOpenBrace                 = @{
+            Enable             = $true
+            OnSameLine         = $true
+            NewLineAfter       = $true
+            IgnoreOneLineBlock = $true
+        }
+        PSPlaceCloseBrace                = @{
+            Enable             = $true
+            NewLineAfter       = $true
+            IgnoreOneLineBlock = $true
+            NoEmptyLineBefore  = $false
+        }
+        PSUseConsistentIndentation       = @{
             Enable              = $true
             Kind                = 'space'
             PipelineIndentation = 'IncreaseIndentationForFirstPipeline'
             IndentationSize     = 4
         }
-        PSUseConsistentWhitespace = @{
+        PSUseConsistentWhitespace        = @{
             Enable                          = $true
             CheckInnerBrace                 = $true
             CheckOpenBrace                  = $true
@@ -29,6 +45,10 @@
             CheckPipeForRedundantWhitespace = $false
             CheckSeparator                  = $true
             CheckParameter                  = $false
+        }
+        PSAlignAssignmentStatement       = @{
+            Enable         = $true
+            CheckHashtable = $false
         }
     }
 }

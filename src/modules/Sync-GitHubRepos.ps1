@@ -68,19 +68,19 @@ function Invoke-GitHubSync {
 
     $tokenDiagnostics = Get-GitHubTokenDiagnostics -Token $token -ProjectRoot $ProjectRoot
     Write-GitHubKeyValueBlock -Title 'GitHub token diagnostics' -Data ([ordered]@{
-        source = $tokenDiagnostics.Source
-        envFileState = $tokenDiagnostics.EnvFileState
-        length = $tokenDiagnostics.Length
-        preview = $tokenDiagnostics.Preview
-        format = $tokenDiagnostics.Format
-    })
+            source = $tokenDiagnostics.Source
+            envFileState = $tokenDiagnostics.EnvFileState
+            length = $tokenDiagnostics.Length
+            preview = $tokenDiagnostics.Preview
+            format = $tokenDiagnostics.Format
+        })
 
     $authResult = Test-GitHubTokenAccess -Headers $headers
     if (-not $authResult.IsValid) {
         if (-not [string]::IsNullOrWhiteSpace([string]$authResult.Diagnostics)) {
             Write-GitHubKeyValueBlock -Title 'GitHub auth diagnostics' -Data ([ordered]@{
-                details = [string]$authResult.Diagnostics
-            }) -Level 'Warning'
+                    details = [string]$authResult.Diagnostics
+                }) -Level 'Warning'
         }
         $results.Add((New-ReportEntry -Module 'GitHub' -Item 'AUTH' -Status 'ERROR' -Message $authResult.Message))
         return $results
@@ -277,11 +277,11 @@ function Get-GitHubReposPaginated {
         $requestId = Get-HttpHeaderValue -Headers $response.Headers -Name 'X-GitHub-Request-Id'
         $itemsCount = @($items).Count
         Write-GitHubKeyValueBlock -Title 'GitHub API response' -Data ([ordered]@{
-            endpoint = $Label
-            page = $page
-            count = $itemsCount
-            requestId = $requestId
-        })
+                endpoint = $Label
+                page = $page
+                count = $itemsCount
+                requestId = $requestId
+            })
 
         if ($null -eq $items -or @($items).Count -eq 0) {
             break
@@ -408,10 +408,10 @@ function Test-GitHubTokenAccess {
             $scopes = Get-HttpHeaderValue -Headers $response.Headers -Name 'X-OAuth-Scopes'
             $requestId = Get-HttpHeaderValue -Headers $response.Headers -Name 'X-GitHub-Request-Id'
             Write-GitHubKeyValueBlock -Title 'GitHub auth validated' -Data ([ordered]@{
-                user = [string]$me.login
-                scopes = $scopes
-                requestId = $requestId
-            })
+                    user = [string]$me.login
+                    scopes = $scopes
+                    requestId = $requestId
+                })
             return @{ IsValid = $true; Message = 'OK'; Diagnostics = ''; Login = [string]$me.login }
         }
 
@@ -436,7 +436,9 @@ function Test-GitHubTokenAccess {
                 $responseBody = [string]$_.ErrorDetails.Message
             }
         }
-        catch {}
+        catch {
+            Write-Log -Level Debug -Message 'Unable to extract extended GitHub token diagnostics from the exception payload.'
+        }
 
         $diagnostics = "status=$statusCode; scopes='$scopes'; requestId='$requestId'"
         if (-not [string]::IsNullOrWhiteSpace($responseBody)) {
@@ -540,7 +542,9 @@ function Get-HttpHeaderValue {
             }
         }
     }
-    catch {}
+    catch {
+        Write-Log -Level Debug -Message "Unable to read HTTP header '$Name'."
+    }
 
     return ''
 }
@@ -589,3 +593,5 @@ function Get-GitHubActionFromStatus {
         default { return 'Repository sync completed.' }
     }
 }
+
+

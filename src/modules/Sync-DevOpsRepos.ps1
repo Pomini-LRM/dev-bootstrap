@@ -186,10 +186,10 @@ function Resolve-DevOpsOrganizations {
             }
         }
 
-        return @($resolved | Select-Object -Unique)
+        return , @($resolved | Select-Object -Unique)
     }
 
-    return @()
+    return , @()
 }
 
 function ConvertTo-DevOpsRemoteUrl {

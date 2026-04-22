@@ -61,7 +61,8 @@ if ($currentPolicy -notin @('Bypass', 'Unrestricted')) {
         foreach ($p in $PSBoundParameters.GetEnumerator()) {
             if ($p.Value -is [switch]) {
                 if ($p.Value.IsPresent) { $argList += "-$($p.Key)" }
-            } else {
+            }
+            else {
                 $argList += "-$($p.Key)"
                 $argList += "$($p.Value)"
             }
@@ -166,3 +167,5 @@ Clear-DeferredActions
 $exitCode = Invoke-DevBootstrap -Config $config -RunMode $RunMode -ProjectRoot $projectRoot -Force:$Force.IsPresent
 Invoke-DeferredActions -Silent:$config.general.silent -NoConfirm:$config.general.noConfirm
 exit $exitCode
+
+

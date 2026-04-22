@@ -103,10 +103,10 @@ function Set-ModuleManifestVersion {
     Set-Content -LiteralPath $Path -Value $updated -Encoding utf8
 }
 
- $current = Get-CurrentVersion -Path $versionPath
- $currentVersion = $current.Version
- $currentDate = $current.Date
- $parts = ConvertFrom-SemVerString -Version $currentVersion
+$current = Get-CurrentVersion -Path $versionPath
+$currentVersion = $current.Version
+$currentDate = $current.Date
+$parts = ConvertFrom-SemVerString -Version $currentVersion
 
 switch ($Part) {
     'major' {
@@ -143,4 +143,6 @@ Set-ModuleManifestVersion -Path $moduleManifestPath -Version $newVersion
 if (Test-Path -LiteralPath $moduleManifestPath) {
     Write-Host "Updated module manifest: $moduleManifestPath" -ForegroundColor Green
 }
+
+
 

@@ -14,6 +14,20 @@
         # Write-Host is used intentionally in user-facing CLI output for colored text
         # that must not be captured by the pipeline.
         'PSAvoidUsingWriteHost'
+
+        # Internal helpers frequently operate on collections; singular-noun renames would
+        # add churn with little value for this repository.
+        'PSUseSingularNouns'
+
+        # Module entry points and automation scripts intentionally share a standard
+        # signature even when some parameters are unused in a specific implementation.
+        'PSReviewUnusedParameter'
+
+        # The repository standard is UTF-8 without BOM.
+        'PSUseBOMForUnicodeEncodedFile'
+
+        # The project intentionally exposes Write-Log as a stable logging helper.
+        'PSAvoidOverwritingBuiltInCmdlets'
     )
 
     Rules = @{

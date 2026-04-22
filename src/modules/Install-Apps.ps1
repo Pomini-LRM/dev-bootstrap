@@ -1005,7 +1005,7 @@ function Test-ShouldUpgradeInstalledApp {
     }
 
     $comparison = Compare-ComparableVersionStrings -Left $current -Right $latest
-    if ($comparison -eq $null) {
+    if ($null -eq $comparison) {
         return $current -ne $latest
     }
 
@@ -1028,7 +1028,7 @@ function Get-NormalizedLatestVersionForDisplay {
     }
 
     $comparison = Compare-ComparableVersionStrings -Left $CurrentVersion -Right $LatestVersion
-    if ($comparison -eq $null) {
+    if ($null -eq $comparison) {
         return [string]$LatestVersion
     }
 

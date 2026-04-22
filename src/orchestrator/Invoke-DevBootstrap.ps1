@@ -95,15 +95,15 @@ function Invoke-DevBootstrap {
         if ($hasCriticalError -and $failFast) {
             Add-ReportEntry -Entry (New-ReportEntry -Module $module.Label -Item 'MODULE' -Status 'SKIPPED' -Message 'Skipped due to fail-fast policy.')
             $moduleExecutions.Add(@{
-                Name = $module.Name
-                Module = $module.Label
-                Status = 'SKIPPED'
-                Items = 0
-                Errors = 0
-                InsUpd = 0
-                PresSkp = 0
-                Duration = [TimeSpan]::Zero
-            })
+                    Name = $module.Name
+                    Module = $module.Label
+                    Status = 'SKIPPED'
+                    Items = 0
+                    Errors = 0
+                    InsUpd = 0
+                    PresSkp = 0
+                    Duration = [TimeSpan]::Zero
+                })
             continue
         }
 
@@ -161,15 +161,15 @@ function Invoke-DevBootstrap {
         }
 
         $moduleExecutions.Add(@{
-            Name = $module.Name
-            Module = $module.Label
-            Status = $moduleStatus
-            Items = $moduleItemCount
-            Errors = $moduleErrorCount
-            InsUpd = $moduleInsUpdCount
-            PresSkp = $modulePresSkpCount
-            Duration = $stepDuration
-        })
+                Name = $module.Name
+                Module = $module.Label
+                Status = $moduleStatus
+                Items = $moduleItemCount
+                Errors = $moduleErrorCount
+                InsUpd = $moduleInsUpdCount
+                PresSkp = $modulePresSkpCount
+                Duration = $stepDuration
+            })
     }
 
     $runTimer.Stop()
@@ -195,8 +195,8 @@ function Invoke-DevBootstrap {
     Write-ModuleExecutionSummary -ModuleExecutions $moduleExecutions -TotalOperations $entries.Count -ErrorCount $errorCount -TotalDuration $runTimer.Elapsed
     $executedModuleNames = @(
         $moduleExecutions |
-        Where-Object { $_.Status -ne 'SKIPPED' } |
-        ForEach-Object { ([string]$_.Name).ToLowerInvariant() }
+            Where-Object { $_.Status -ne 'SKIPPED' } |
+            ForEach-Object { ([string]$_.Name).ToLowerInvariant() }
     )
     Write-OrphanSummaryTables -Entries $entries -ExecutedModules $executedModuleNames
 
@@ -252,3 +252,5 @@ function Write-ModuleExecutionSummary {
     $totalErrorsText = ([string]$ErrorCount).PadLeft(6)
     Write-Log -Level Info -Message "  $totalModuleText  $totalStatusText  $totalItemsText  $totalInsUpd  $totalPresSkp  $totalErrorsText  $totalDurationText"
 }
+
+

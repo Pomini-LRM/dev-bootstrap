@@ -27,17 +27,10 @@ jobs:
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force
 
-      - name: Run PSScriptAnalyzer
+      - name: Run format check and PSScriptAnalyzer
         shell: pwsh
         run: |
-          $results = @(Invoke-ScriptAnalyzer -Path src, tests -Recurse `
-              -Settings .github/linters/PSScriptAnalyzerSettings.psd1)
-          $results | Format-Table Severity, RuleName, ScriptName, Line, Message -AutoSize -Wrap
-          $errors = @($results | Where-Object Severity -eq 'Error')
-          if ($errors.Count -gt 0) {
-              Write-Error "PSScriptAnalyzer found $($errors.Count) error(s)."
-              exit 1
-          }
+          ./scripts/Invoke-CodeQuality.ps1 -SkipTests
 
   # ---------------------------------------------------------------------------
   # Test (gate — matrix)

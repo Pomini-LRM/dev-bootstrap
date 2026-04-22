@@ -61,70 +61,10 @@ jobs:
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force
 
-      - name: Run PSScriptAnalyzer
+        - name: Run format check and PSScriptAnalyzer
         shell: pwsh
         run: |
-          $settingsPath = '.github/linters/PSScriptAnalyzerSettings.psd1'
-          $scanPaths    = @('src', 'tests')
-          $allResults   = [System.Collections.Generic.List[object]]::new()
-
-          foreach ($p in $scanPaths) {
-              $allResults.AddRange(@(Invoke-ScriptAnalyzer -Path $p -Recurse -Settings $settingsPath))
-          }
-
-          # ── Console output ────────────────────────────────────────────────
-          if ($allResults.Count -gt 0) {
-              $allResults | Format-Table Severity, RuleName, ScriptName, Line, Message -AutoSize -Wrap
-          }
-          else {
-              Write-Host 'No issues found.' -ForegroundColor Green
-          }
-
-          # ── Severity counts ───────────────────────────────────────────────
-          $errors   = @($allResults | Where-Object Severity -eq 'Error')
-          $warnings = @($allResults | Where-Object Severity -eq 'Warning')
-          $info     = @($allResults | Where-Object Severity -eq 'Information')
-
-          # ── Scanned file count ────────────────────────────────────────────
-          $fileCount = (Get-ChildItem -Path $scanPaths -Recurse -Include '*.ps1','*.psm1','*.psd1' | Measure-Object).Count
-
-          # ── Step Summary ──────────────────────────────────────────────────
-          $md = [System.Text.StringBuilder]::new()
-          [void]$md.AppendLine('## PSScriptAnalyzer Results')
-          [void]$md.AppendLine()
-          [void]$md.AppendLine('| Severity | Count |')
-          [void]$md.AppendLine('|----------|------:|')
-          [void]$md.AppendLine("| Error | $($errors.Count) |")
-          [void]$md.AppendLine("| Warning | $($warnings.Count) |")
-          [void]$md.AppendLine("| Information | $($info.Count) |")
-          [void]$md.AppendLine()
-          [void]$md.AppendLine("**PowerShell:** $($PSVersionTable.PSVersion)")
-          [void]$md.AppendLine("**Settings:** ``$settingsPath``")
-          [void]$md.AppendLine("**Files analysed:** $fileCount")
-          [void]$md.AppendLine()
-
-          if ($allResults.Count -gt 0) {
-              [void]$md.AppendLine('<details><summary>Top 20 issues</summary>')
-              [void]$md.AppendLine()
-              [void]$md.AppendLine('| Rule | File | Line | Severity |')
-              [void]$md.AppendLine('|------|------|-----:|----------|')
-              foreach ($r in ($allResults | Select-Object -First 20)) {
-                  [void]$md.AppendLine("| ``$($r.RuleName)`` | ``$($r.ScriptName)`` | $($r.Line) | $($r.Severity) |")
-              }
-              [void]$md.AppendLine()
-              [void]$md.AppendLine('</details>')
-          }
-          else {
-              [void]$md.AppendLine('Clean — no issues found.')
-          }
-
-          $md.ToString() >> $env:GITHUB_STEP_SUMMARY
-
-          # ── Fail on errors ────────────────────────────────────────────────
-          if ($errors.Count -gt 0) {
-              Write-Error "PSScriptAnalyzer found $($errors.Count) error-level issue(s)."
-              exit 1
-          }
+          ./scripts/Invoke-CodeQuality.ps1 -SkipTests
 
   # ---------------------------------------------------------------------------
   # Pester Tests (matrix: Ubuntu + Windows)

@@ -32,7 +32,8 @@ if ($currentPolicy -notin @('Bypass', 'Unrestricted')) {
         foreach ($p in $PSBoundParameters.GetEnumerator()) {
             if ($p.Value -is [switch]) {
                 if ($p.Value.IsPresent) { $argList += "-$($p.Key)" }
-            } else {
+            }
+            else {
                 $argList += "-$($p.Key)"
                 $argList += "$($p.Value)"
             }
@@ -578,4 +579,6 @@ else {
 }
 
 Write-Host "  $step ) Run: pwsh .\dev-bootstrap.ps1"
+
+
 

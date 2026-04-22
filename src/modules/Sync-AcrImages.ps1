@@ -58,7 +58,7 @@ function Invoke-AcrSync {
                 }
             }
             catch {
-                # Ignore parse issues and fall back to login flow.
+                Write-Log -Level Debug -Message "Unable to parse 'az account show' output. Falling back to login flow."
             }
         }
 
@@ -133,10 +133,10 @@ function Invoke-AcrSync {
                 if ($seen.Add($resolvedImage)) {
                     $shouldSync = Test-AcrIncludeExcludeMatch -Name $repoName -IncludeTokens $imagesInclude -ExcludeTokens $imagesExclude
                     $workItems.Add([PSCustomObject]@{
-                            Label         = "$registry - $repoName"
-                            Item          = "$registry/$repoName"
+                            Label = "$registry - $repoName"
+                            Item = "$registry/$repoName"
                             ResolvedImage = $resolvedImage
-                            ShouldSync    = $shouldSync
+                            ShouldSync = $shouldSync
                         })
                 }
             }
@@ -149,10 +149,10 @@ function Invoke-AcrSync {
                     $nameForFilter = ($includeImage -replace '^.+?\.azurecr\.io/', '')
                     $shouldSync = Test-AcrIncludeExcludeMatch -Name $nameForFilter -IncludeTokens $imagesInclude -ExcludeTokens $imagesExclude
                     $workItems.Add([PSCustomObject]@{
-                            Label         = $includeImage
-                            Item          = $nameForFilter
+                            Label = $includeImage
+                            Item = $nameForFilter
                             ResolvedImage = $includeImage
-                            ShouldSync    = $shouldSync
+                            ShouldSync = $shouldSync
                         })
                 }
                 continue
@@ -163,10 +163,10 @@ function Invoke-AcrSync {
                 if ($seen.Add($resolvedImage)) {
                     $shouldSync = Test-AcrIncludeExcludeMatch -Name $includeImage -IncludeTokens $imagesInclude -ExcludeTokens $imagesExclude
                     $workItems.Add([PSCustomObject]@{
-                            Label         = "$registry - $includeImage"
-                            Item          = "$registry/$includeImage"
+                            Label = "$registry - $includeImage"
+                            Item = "$registry/$includeImage"
                             ResolvedImage = $resolvedImage
-                            ShouldSync    = $shouldSync
+                            ShouldSync = $shouldSync
                         })
                 }
             }
@@ -346,7 +346,7 @@ function Test-AcrImageFreshnessProbe {
     if ($ResolvedImage -notmatch '^(?<registry>[^\.]+)\.azurecr\.io/(?<path>.+)$') {
         return @{
             IsReachable = $false
-            Message     = "Invalid ACR image format: $ResolvedImage"
+            Message = "Invalid ACR image format: $ResolvedImage"
         }
     }
 
@@ -375,13 +375,13 @@ function Test-AcrImageFreshnessProbe {
 
         return @{
             IsReachable = $true
-            Message     = 'Image freshness probe succeeded.'
+            Message = 'Image freshness probe succeeded.'
         }
     }
     catch {
         return @{
             IsReachable = $false
-            Message     = "Registry appears closed or unreachable: freshness cannot be verified for $ResolvedImage."
+            Message = "Registry appears closed or unreachable: freshness cannot be verified for $ResolvedImage."
         }
     }
 }
@@ -466,3 +466,5 @@ function Get-AcrActionFromStatus {
         default { return 'Image sync completed.' }
     }
 }
+
+

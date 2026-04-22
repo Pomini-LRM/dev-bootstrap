@@ -23,7 +23,7 @@ BeforeAll {
 Describe 'Automation catalog' {
     It 'loads automation catalog entries' {
         $catalog = Read-AutomationCatalog -ProjectRoot $projectRoot
-        @($catalog.automations).Count | Should -Be 4
+        @($catalog.automations).Count | Should -Be 3
         @($catalog.automations | ForEach-Object { $_.key }) | Should -Contain 'addMakePath'
         @($catalog.automations | ForEach-Object { $_.key }) | Should -Contain 'setGitHubUser'
         @($catalog.automations | ForEach-Object { $_.key }) | Should -Contain 'desktopLinkForThisApplication'

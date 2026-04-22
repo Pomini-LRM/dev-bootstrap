@@ -375,7 +375,6 @@ Developer-only version management and release notes are documented here:
 - Each catalog entry specifies a `scriptFile` field pointing to a script in `src/automation/`.
 - Built-in automation scripts (migrated from the former `configurations` module):
   - add `GnuWin32\bin` to user `PATH`
-  - copy VS Code Copilot Chat keybindings template
   - set global git user name/email
   - create desktop shortcut for `dev-bootstrap`
 - Runs idempotently with `UPDATED`, `NONE`, `SKIPPED`, `ERROR` statuses.
@@ -517,6 +516,10 @@ For contributors and maintainers:
 - App catalog authoring (where to find `wingetId`, `linuxPackage`, `linuxCommand`): `docs/developer-app-catalog.md`
 - CI quality gates: `.github/workflows/ci.yml`
 - Static analysis policy: `PSScriptAnalyzerSettings.psd1`
+- Local formatter: `pwsh ./scripts/Format-Code.ps1`
+- Local quality gate (format check + lint + tests): `pwsh ./scripts/Invoke-CodeQuality.ps1`
+- Auto-fix formatting before lint/tests: `pwsh ./scripts/Invoke-CodeQuality.ps1 -FixFormat`
+- VS Code tasks: `.vscode/tasks.json`
 
 ## Known Limitations
 

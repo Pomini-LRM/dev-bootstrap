@@ -42,7 +42,6 @@ function Get-DefaultConfig {
                 enabled = $false
                 catalog = @{
                     addMakePath = $true
-                    addCopilotChatKeybindings = $true
                     setGitHubUser = $false
                     desktopLinkForThisApplication = $false
                 }
@@ -179,15 +178,50 @@ function Test-DevBootstrapConfig {
 
     if (-not $Config.ContainsKey('modules')) {
         $errors.Add("Missing required section 'modules'.")
-        return $errors
+        return , @($errors)
     }
 
-    if ($Config.modules.github.enabled -and [string]::IsNullOrWhiteSpace($Config.modules.github.path)) {
+    $githubModule = if ($Config.modules.ContainsKey('github') -and $Config.modules.github -is [System.Collections.IDictionary]) {
+        $Config.modules.github
+    }
+    else {
+        $null
+    }
+
+    $devOpsModule = if ($Config.modules.ContainsKey('devops') -and $Config.modules.devops -is [System.Collections.IDictionary]) {
+        $Config.modules.devops
+    }
+    else {
+        $null
+    }
+
+    $acrModule = if ($Config.modules.ContainsKey('acr') -and $Config.modules.acr -is [System.Collections.IDictionary]) {
+        $Config.modules.acr
+    }
+    else {
+        $null
+    }
+
+    $appInstallerModule = if ($Config.modules.ContainsKey('appInstaller') -and $Config.modules.appInstaller -is [System.Collections.IDictionary]) {
+        $Config.modules.appInstaller
+    }
+    else {
+        $null
+    }
+
+    $automationModule = if ($Config.modules.ContainsKey('automation') -and $Config.modules.automation -is [System.Collections.IDictionary]) {
+        $Config.modules.automation
+    }
+    else {
+        $null
+    }
+
+    if ($null -ne $githubModule -and $githubModule.enabled -and [string]::IsNullOrWhiteSpace($githubModule.path)) {
         $errors.Add('modules.github.path must not be empty.')
     }
-    elseif ($Config.modules.github.enabled) {
+    elseif ($null -ne $githubModule -and $githubModule.enabled) {
         try {
-            $githubPathInput = [string]$Config.modules.github.path
+            $githubPathInput = [string]$githubModule.path
             if ($githubPathInput.Trim().StartsWith('~')) {
                 $githubPathInput = Join-Path $HOME $githubPathInput.Trim().Substring(1).TrimStart('/', '\\')
             }
@@ -196,19 +230,19 @@ function Test-DevBootstrapConfig {
                 $errors.Add('modules.github.path must be an absolute path.')
             }
 
-            $null = Resolve-ConfiguredPath -Path $Config.modules.github.path
+            $null = Resolve-ConfiguredPath -Path $githubModule.path
         }
         catch {
-            $errors.Add("modules.github.path is invalid: $($Config.modules.github.path)")
+            $errors.Add("modules.github.path is invalid: $($githubModule.path)")
         }
     }
 
-    if ($Config.modules.devops.enabled -and [string]::IsNullOrWhiteSpace($Config.modules.devops.path)) {
+    if ($null -ne $devOpsModule -and $devOpsModule.enabled -and [string]::IsNullOrWhiteSpace($devOpsModule.path)) {
         $errors.Add('modules.devops.path must not be empty.')
     }
-    elseif ($Config.modules.devops.enabled) {
+    elseif ($null -ne $devOpsModule -and $devOpsModule.enabled) {
         try {
-            $devopsPathInput = [string]$Config.modules.devops.path
+            $devopsPathInput = [string]$devOpsModule.path
             if ($devopsPathInput.Trim().StartsWith('~')) {
                 $devopsPathInput = Join-Path $HOME $devopsPathInput.Trim().Substring(1).TrimStart('/', '\\')
             }
@@ -217,62 +251,62 @@ function Test-DevBootstrapConfig {
                 $errors.Add('modules.devops.path must be an absolute path.')
             }
 
-            $null = Resolve-ConfiguredPath -Path $Config.modules.devops.path
+            $null = Resolve-ConfiguredPath -Path $devOpsModule.path
         }
         catch {
-            $errors.Add("modules.devops.path is invalid: $($Config.modules.devops.path)")
+            $errors.Add("modules.devops.path is invalid: $($devOpsModule.path)")
         }
     }
 
-    if ($Config.modules.acr.enabled) {
+    if ($null -ne $acrModule -and $acrModule.enabled) {
         $tenantId = Get-SecureEnvVariable -Name 'AZURE_TENANT_ID'
 
         if ([string]::IsNullOrWhiteSpace($tenantId)) {
             $errors.Add('AZURE_TENANT_ID is required when ACR is enabled.')
         }
 
-        $registries = @($Config.modules.acr.registries)
+        $registries = @($acrModule.registries)
         if ($registries.Count -eq 0) {
             $errors.Add('modules.acr.registries requires at least one registry name.')
         }
 
-        if ($null -eq $Config.modules.acr.imagesInclude) {
+        if ($null -eq $acrModule.imagesInclude) {
             $errors.Add('modules.acr.imagesInclude must be set (use ["*"] for all images).')
         }
     }
 
-    if ($Config.modules.appInstaller.enabled) {
-        if ($null -eq $Config.modules.appInstaller.recommendedApps -or -not ($Config.modules.appInstaller.recommendedApps -is [System.Collections.IDictionary])) {
+    if ($null -ne $appInstallerModule -and $appInstallerModule.enabled) {
+        if ($null -eq $appInstallerModule.recommendedApps -or -not ($appInstallerModule.recommendedApps -is [System.Collections.IDictionary])) {
             $errors.Add('modules.appInstaller.recommendedApps must be a hashtable of boolean flags.')
         }
 
-        if ($null -eq $Config.modules.appInstaller.optionalApps -or -not ($Config.modules.appInstaller.optionalApps -is [System.Collections.IDictionary])) {
+        if ($null -eq $appInstallerModule.optionalApps -or -not ($appInstallerModule.optionalApps -is [System.Collections.IDictionary])) {
             $errors.Add('modules.appInstaller.optionalApps must be a hashtable of boolean flags.')
         }
     }
 
-    if ($Config.modules.automation.enabled) {
-        if ($null -eq $Config.modules.automation.catalog -or -not ($Config.modules.automation.catalog -is [System.Collections.IDictionary])) {
+    if ($null -ne $automationModule -and $automationModule.enabled) {
+        if ($null -eq $automationModule.catalog -or -not ($automationModule.catalog -is [System.Collections.IDictionary])) {
             $errors.Add('modules.automation.catalog must be a hashtable of boolean flags.')
         }
 
-        if ($Config.modules.automation.catalog.setGitHubUser) {
-            if (-not $Config.modules.automation.ContainsKey('gitHubUser') -or -not ($Config.modules.automation.gitHubUser -is [System.Collections.IDictionary])) {
+        if ($automationModule.catalog.setGitHubUser) {
+            if (-not $automationModule.ContainsKey('gitHubUser') -or -not ($automationModule.gitHubUser -is [System.Collections.IDictionary])) {
                 $errors.Add('modules.automation.gitHubUser must be set when modules.automation.catalog.setGitHubUser is enabled.')
             }
             else {
-                if ([string]::IsNullOrWhiteSpace([string]$Config.modules.automation.gitHubUser.name)) {
+                if ([string]::IsNullOrWhiteSpace([string]$automationModule.gitHubUser.name)) {
                     $errors.Add('modules.automation.gitHubUser.name must not be empty when setGitHubUser is enabled.')
                 }
 
-                if ([string]::IsNullOrWhiteSpace([string]$Config.modules.automation.gitHubUser.email)) {
+                if ([string]::IsNullOrWhiteSpace([string]$automationModule.gitHubUser.email)) {
                     $errors.Add('modules.automation.gitHubUser.email must not be empty when setGitHubUser is enabled.')
                 }
             }
         }
     }
 
-    return @($errors)
+    return , @($errors)
 }
 
 function ConvertTo-AppInstallerAppSelectionConfig {
