@@ -126,7 +126,7 @@ function Read-DevBootstrapConfig {
     $merged = ConvertTo-AutomationModuleConfig -Config $merged
     $merged = ConvertTo-AppInstallerAppSelectionConfig -Config $merged
     $merged = ConvertTo-AcrImageFilterConfig -Config $merged
-    $errors = @(Test-DevBootstrapConfig -Config $merged)
+    $errors = Test-DevBootstrapConfig -Config $merged
     if ($errors.Count -gt 0) {
         throw ("Configuration validation failed:`n" + ($errors -join "`n"))
     }
