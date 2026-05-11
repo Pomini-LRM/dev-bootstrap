@@ -19,6 +19,27 @@ function Test-IsWindows { return $IsWindows -eq $true }
 function Test-IsLinux { return $IsLinux -eq $true }
 function Test-IsMacOS { return $IsMacOS -eq $true }
 
+function Test-WindowsDarkTheme {
+    <#
+    .SYNOPSIS
+        Returns $true if Windows is using a dark app theme, $false for light.
+    #>
+    [CmdletBinding()]
+    param()
+
+    if (-not (Test-IsWindows)) { return $false }
+
+    try {
+        $regPath = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+        $value = Get-ItemPropertyValue -LiteralPath $regPath -Name 'AppsUseLightTheme' -ErrorAction Stop
+        return $value -eq 0
+    }
+    catch {
+        Write-Log -Level Debug -Message "Unable to detect Windows theme. Defaulting to dark. $_"
+        return $true
+    }
+}
+
 function Test-CommandExists {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$CommandName)

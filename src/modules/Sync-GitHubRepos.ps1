@@ -150,7 +150,8 @@ function Invoke-GitHubSync {
 
     if ($moduleConfig.setFolderIcon) {
         if (Test-IsWindows) {
-            Set-WindowsFolderIcon -FolderPath $targetRoot -IconFile 'github.ico' -ProjectRoot $ProjectRoot
+            $iconFile = if (Test-WindowsDarkTheme) { 'github_dark.ico' } else { 'github_light.ico' }
+            Set-WindowsFolderIcon -FolderPath $targetRoot -IconFile $iconFile -ProjectRoot $ProjectRoot
         }
         else {
             Write-Log -Level Warning -Message 'Folder icon option is Windows-only. Ignoring on this platform.'
