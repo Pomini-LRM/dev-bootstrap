@@ -98,6 +98,44 @@ if (-not $ConfigPath) {
     $ConfigPath = $defaultConfigPath
 }
 
+# ---- First-run handoff: import config files from dev-bootstrap-first ---------
+$firstRunHandoff = if ($env:DEV_BOOTSTRAP_FINAL) {
+    $env:DEV_BOOTSTRAP_FINAL
+}
+elseif ($IsWindows -or (-not (Test-Path variable:IsWindows))) {
+    Join-Path $env:USERPROFILE 'PominiLRM' 'dev-bootstrap'
+}
+else {
+    Join-Path $HOME 'PominiLRM' 'dev-bootstrap'
+}
+
+if ((Test-Path -LiteralPath $firstRunHandoff) -and ($firstRunHandoff -ne $projectRoot)) {
+    $handoffConfig = Join-Path $firstRunHandoff 'config' 'config.json'
+    $handoffEnv = Join-Path $firstRunHandoff '.env'
+    $imported = $false
+
+    if ((Test-Path -LiteralPath $handoffConfig) -and (-not (Test-Path -LiteralPath $ConfigPath))) {
+        $configDir = Join-Path $projectRoot 'config'
+        if (-not (Test-Path -LiteralPath $configDir)) {
+            New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+        }
+        Copy-Item -LiteralPath $handoffConfig -Destination $ConfigPath -Force
+        Write-Host "Imported config.json from first-run handoff: $firstRunHandoff" -ForegroundColor Green
+        $imported = $true
+    }
+
+    if ((Test-Path -LiteralPath $handoffEnv) -and (-not (Test-Path -LiteralPath $envFilePath))) {
+        Copy-Item -LiteralPath $handoffEnv -Destination $envFilePath -Force
+        Write-Host "Imported .env from first-run handoff: $firstRunHandoff" -ForegroundColor Green
+        $imported = $true
+    }
+
+    if ($imported) {
+        Remove-Item -LiteralPath $firstRunHandoff -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host "Removed first-run handoff folder: $firstRunHandoff" -ForegroundColor DarkGray
+    }
+}
+
 if (Test-Path -LiteralPath $envFilePath) {
     Import-EnvFile -Path $envFilePath
 }

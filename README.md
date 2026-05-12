@@ -13,6 +13,7 @@ Cross-platform environment bootstrap suite for PowerShell 7+.
   - [First-Time Setup](#first-time-setup)
     - [Windows](#windows)
     - [Linux](#linux)
+    - [First-Run Handoff (dev-bootstrap-first)](#first-run-handoff-dev-bootstrap-first)
   - [Configuration](#configuration)
     - [General](#general)
     - [GitHub Settings](#github-settings)
@@ -140,6 +141,25 @@ Interactive wizard notes:
 - In module selection, use arrow keys to move, space to select/unselect, enter to confirm.
 - If `config/config.json` already exists, it is loaded and reused as defaults.
 - Before writing changes, the previous config is saved as a timestamped backup (`config.json.bak.yyyyMMdd_HHmmss`).
+
+### First-Run Handoff (dev-bootstrap-first)
+
+When `dev-bootstrap` is installed via the
+[`dev-bootstrap-first`](https://github.com/Pomini-LRM/dev-bootstrap-first) launcher, the
+launcher places `config.json` and `.env` in a handoff folder:
+
+| OS            | Default handoff path                              |
+| ------------- | ------------------------------------------------- |
+| Windows       | `%USERPROFILE%\PominiLRM\dev-bootstrap`           |
+| Linux / macOS | `$HOME/PominiLRM/dev-bootstrap`                   |
+
+On startup, `dev-bootstrap.ps1` checks the handoff folder (or the path in
+`$env:DEV_BOOTSTRAP_FINAL`). If `config.json` and/or `.env` are found **and** the
+corresponding files do not already exist in the repository, they are imported automatically.
+The handoff folder is then deleted.
+
+No manual action is required — configuration files are seamlessly carried over from the
+first-run launcher to the cloned repository.
 
 ## Configuration
 
