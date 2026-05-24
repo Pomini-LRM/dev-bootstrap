@@ -27,51 +27,22 @@ function Invoke-DevBootstrap {
     Import-EnvFile -Path (Join-Path $ProjectRoot '.env')
     Clear-ReportEntries
 
+    $moduleDefinitions = Get-ConfiguredModuleDefinitions -Config $Config -ProjectRoot $ProjectRoot
+    Write-ConfiguredModuleSummary -ModuleDefinitions $moduleDefinitions
+
     if (-not $Config.general.noConfirm -and -not $Config.general.silent) {
         $confirm = Read-HostSafe -Prompt "Proceed with '$RunMode' execution? (Y/n)"
         if ($confirm -and $confirm -notin @('y', 'Y', '')) {
-            Write-Log -Level Warning -Message 'Execution canceled by user.'
-            return 0
+            $selectedRunMode = Select-RunModeFromEnabledModules -ModuleDefinitions $moduleDefinitions
+            if ([string]::IsNullOrWhiteSpace($selectedRunMode)) {
+                Write-Log -Level Warning -Message 'Execution canceled by user.'
+                return 0
+            }
+
+            $RunMode = $selectedRunMode
+            Write-Log -Level Info -Message "Proceeding with '$RunMode' execution."
         }
     }
-
-    $moduleDefinitions = @(
-        @{
-            Name = 'appInstaller'
-            Label = 'App Installer'
-            Enabled = $Config.modules.appInstaller.enabled
-            ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Install-Apps.ps1'
-            Invoke = { param($c, $p, $f) Invoke-AppInstaller -Config $c -ProjectRoot $p -Force:$f }
-        }
-        @{
-            Name = 'automation'
-            Label = 'Automation'
-            Enabled = $Config.modules.automation.enabled
-            ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Invoke-Automation.ps1'
-            Invoke = { param($c, $p, $f) Invoke-Automation -Config $c -ProjectRoot $p -Force:$f }
-        }
-        @{
-            Name = 'github'
-            Label = 'GitHub Sync'
-            Enabled = $Config.modules.github.enabled
-            ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Sync-GitHubRepos.ps1'
-            Invoke = { param($c, $p, $f) Invoke-GitHubSync -Config $c -ProjectRoot $p -Force:$f }
-        }
-        @{
-            Name = 'devops'
-            Label = 'Azure DevOps Sync'
-            Enabled = $Config.modules.devops.enabled
-            ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Sync-DevOpsRepos.ps1'
-            Invoke = { param($c, $p, $f) Invoke-DevOpsSync -Config $c -ProjectRoot $p -Force:$f }
-        }
-        @{
-            Name = 'acr'
-            Label = 'ACR Image Sync'
-            Enabled = $Config.modules.acr.enabled
-            ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Sync-AcrImages.ps1'
-            Invoke = { param($c, $p, $f) Invoke-AcrSync -Config $c -ProjectRoot $p -Force:$f }
-        }
-    )
 
     $modulesToRun = if ($RunMode -eq 'full') {
         $moduleDefinitions | Where-Object { $_.Enabled }
@@ -206,6 +177,114 @@ function Invoke-DevBootstrap {
     Write-Log -Level Info -Message '============================================='
 
     return $(if ($errorCount -gt 0) { 1 } else { 0 })
+}
+
+function Get-ConfiguredModuleDefinitions {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$Config,
+        [Parameter(Mandatory)][string]$ProjectRoot
+    )
+
+    return @(
+        @{
+            Name = 'appInstaller'
+            Label = 'App Installer'
+            Enabled = $Config.modules.appInstaller.enabled
+            ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Install-Apps.ps1'
+            Invoke = { param($c, $p, $f) Invoke-AppInstaller -Config $c -ProjectRoot $p -Force:$f }
+        }
+        @{
+            Name = 'automation'
+            Label = 'Automation'
+            Enabled = $Config.modules.automation.enabled
+            ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Invoke-Automation.ps1'
+            Invoke = { param($c, $p, $f) Invoke-Automation -Config $c -ProjectRoot $p -Force:$f }
+        }
+        @{
+            Name = 'github'
+            Label = 'GitHub Sync'
+            Enabled = $Config.modules.github.enabled
+            ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Sync-GitHubRepos.ps1'
+            Invoke = { param($c, $p, $f) Invoke-GitHubSync -Config $c -ProjectRoot $p -Force:$f }
+        }
+        @{
+            Name = 'devops'
+            Label = 'Azure DevOps Sync'
+            Enabled = $Config.modules.devops.enabled
+            ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Sync-DevOpsRepos.ps1'
+            Invoke = { param($c, $p, $f) Invoke-DevOpsSync -Config $c -ProjectRoot $p -Force:$f }
+        }
+        @{
+            Name = 'acr'
+            Label = 'ACR Image Sync'
+            Enabled = $Config.modules.acr.enabled
+            ScriptPath = Join-Path $ProjectRoot 'src' 'modules' 'Sync-AcrImages.ps1'
+            Invoke = { param($c, $p, $f) Invoke-AcrSync -Config $c -ProjectRoot $p -Force:$f }
+        }
+    )
+}
+
+function Write-ConfiguredModuleSummary {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][System.Collections.IEnumerable]$ModuleDefinitions)
+
+    $rows = @($ModuleDefinitions)
+    $enabledRows = @($rows | Where-Object { $_.Enabled })
+
+    Write-Log -Level Info -Message 'Configured modules:'
+    foreach ($module in $rows) {
+        $stateText = if ($module.Enabled) { 'enabled' } else { 'disabled' }
+        $scriptName = Split-Path -Leaf ([string]$module.ScriptPath)
+        Write-Log -Level Info -Message "  - $($module.Label): $stateText ($scriptName)"
+    }
+
+    if ($enabledRows.Count -gt 0) {
+        $enabledLabels = @($enabledRows | ForEach-Object { [string]$_.Label }) -join ', '
+        Write-Log -Level Info -Message "Modules scheduled for this run: $enabledLabels"
+    }
+    else {
+        Write-Log -Level Warning -Message 'No modules are enabled in the current configuration.'
+    }
+}
+
+function Select-RunModeFromEnabledModules {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][System.Collections.IEnumerable]$ModuleDefinitions)
+
+    $enabledModules = @($ModuleDefinitions | Where-Object { $_.Enabled })
+    if ($enabledModules.Count -eq 0) {
+        return ''
+    }
+
+    Write-Log -Level Info -Message 'Select a module to run:'
+    for ($index = 0; $index -lt $enabledModules.Count; $index++) {
+        $module = $enabledModules[$index]
+        Write-Log -Level Info -Message ("  [{0}] Run {1}" -f ($index + 1), $module.Label)
+    }
+
+    Write-Log -Level Info -Message '  [0] Exit'
+
+    while ($true) {
+        $choice = Read-HostSafe -Prompt 'Enter a number to run a module or 0 to exit'
+
+        if ([string]::IsNullOrWhiteSpace($choice)) {
+            return ''
+        }
+
+        if ($choice -match '^\d+$') {
+            $selectedIndex = [int]$choice
+            if ($selectedIndex -eq 0) {
+                return ''
+            }
+
+            if ($selectedIndex -ge 1 -and $selectedIndex -le $enabledModules.Count) {
+                return [string]$enabledModules[$selectedIndex - 1].Name
+            }
+        }
+
+        Write-Log -Level Warning -Message 'Invalid selection. Choose one of the listed numbers.'
+    }
 }
 
 function Read-HostSafe {
