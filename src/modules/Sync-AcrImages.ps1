@@ -79,28 +79,82 @@ function Invoke-AcrSync {
 
     $registries = @($moduleConfig.registries)
     $reachableRegistries = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $networkUnavailableRegistries = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $registryNetworkStates = @{}
 
     foreach ($registry in $registries) {
+        $networkState = Get-AcrRegistryNetworkState -Registry $registry
+        $registryNetworkStates[$registry] = $networkState
+
+        if (-not $networkState.IsReachable) {
+            $null = $networkUnavailableRegistries.Add($registry)
+            Write-Log -Level Error -Message $networkState.Message
+            $results.Add((New-ReportEntry -Module 'ACR' -Item "registry:$registry" -Status 'ERROR' -Message $networkState.Message))
+            continue
+        }
+
         if (Test-AcrRegistryReachable -Registry $registry -RetryCount $retryCount -RetryDelaySeconds $retryDelay) {
             $null = $reachableRegistries.Add($registry)
         }
         else {
-            Write-Log -Level Warning -Message "Registry '$registry' not reachable. Image freshness checks will be skipped for this registry."
+            Write-Log -Level Warning -Message "Registry '$registry' reachability probe failed. Will attempt login and pull for explicitly configured images."
+        }
+    }
+
+    $hasExplicitImages = -not (@($moduleConfig.imagesInclude) -contains '*')
+    $probeFailedRegistries = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($registry in $registries) {
+        if (-not $reachableRegistries.Contains($registry)) {
+            $null = $probeFailedRegistries.Add($registry)
         }
     }
 
     foreach ($registry in $registries) {
-        if (-not $reachableRegistries.Contains($registry)) {
+        $isReachable = $reachableRegistries.Contains($registry)
+        $isProbeFailed = $probeFailedRegistries.Contains($registry)
+        if ($networkUnavailableRegistries.Contains($registry)) {
             continue
+        }
+
+        if (-not $isReachable -and -not ($hasExplicitImages -and $isProbeFailed)) {
+            continue
+        }
+
+        if ($isProbeFailed) {
+            Write-Log -Level Warning -Message "Attempting ACR login for '$registry' despite reachability probe failure (explicit images configured)."
         }
 
         try {
             Invoke-WithRetry -MaxRetries $retryCount -BaseDelaySeconds $retryDelay -OperationName "ACR login $registry" -ScriptBlock {
-                $out = & az acr login --name $registry 2>&1
-                if ($LASTEXITCODE -ne 0) {
-                    throw "az acr login failed for $registry"
+                $out = & az acr login --name $registry --only-show-errors 2>&1
+                $outText = (@($out) -join ' ').Trim()
+                if ($LASTEXITCODE -eq 0) {
+                    return $out
                 }
-                return $out
+
+                Write-Log -Level Warning -Message "Standard ACR login failed for '$registry'. CLI output: $outText. Trying expose-token fallback."
+                $tokenRaw = & az acr login --name $registry --expose-token --output json --only-show-errors 2>&1
+                $tokenText = (@($tokenRaw) -join '').Trim()
+                if ($LASTEXITCODE -ne 0) {
+                    $tokenErrText = (@($tokenRaw) -join ' ').Trim()
+                    throw "az acr login failed for $registry. Standard output: $outText | Token output: $tokenErrText"
+                }
+
+                try {
+                    $tokenData = $tokenText | ConvertFrom-Json
+                }
+                catch {
+                    throw "az acr login --expose-token returned unexpected output for $registry. Output: $tokenText"
+                }
+
+                $loginServer = [string]$tokenData.loginServer
+                $accessToken = [string]$tokenData.accessToken
+                $dockerLoginOut = $accessToken | & docker login $loginServer -u '00000000-0000-0000-0000-000000000000' --password-stdin 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    throw "docker login failed for $loginServer (expose-token fallback). Output: $(@($dockerLoginOut) -join ' ')"
+                }
+                Write-Log -Level Info -Message "ACR login for '$registry' succeeded via expose-token fallback."
+                return $dockerLoginOut
             } | Out-Null
         }
         catch {
@@ -196,22 +250,36 @@ function Invoke-AcrSync {
             $registryName = [string]$Matches[1]
         }
 
-        if (-not $reachableRegistries.Contains($registryName)) {
-            $entry = New-ReportEntry -Module 'ACR' -Item $item.Item -Status 'SKIPPED' -Message 'Registry not reachable: freshness cannot be verified.'
+        if ($networkUnavailableRegistries.Contains($registryName)) {
+            $networkMessage = [string]$registryNetworkStates[$registryName].Message
+            $entry = New-ReportEntry -Module 'ACR' -Item $item.Item -Status 'SKIPPED' -Message $networkMessage
             $results.Add($entry)
             Write-AcrImageEntryLog -Entry $entry
             continue
         }
 
-        $freshnessProbe = Test-AcrImageFreshnessProbe -ResolvedImage ([string]$item.ResolvedImage) -RetryCount $retryCount -RetryDelaySeconds $retryDelay
-        if (-not $freshnessProbe.IsReachable) {
-            $entry = New-ReportEntry -Module 'ACR' -Item $item.Item -Status 'SKIPPED' -Message $freshnessProbe.Message
-            $results.Add($entry)
-            Write-AcrImageEntryLog -Entry $entry
-            continue
-        }
+        $registryIsReachable = $reachableRegistries.Contains($registryName)
+        $registryProbeFailed = $probeFailedRegistries.Contains($registryName)
 
-        Write-Log -Level Info -Message '  Freshness check: verified from ACR metadata.'
+        if (-not $registryIsReachable) {
+            if (-not ($hasExplicitImages -and $registryProbeFailed)) {
+                $entry = New-ReportEntry -Module 'ACR' -Item $item.Item -Status 'SKIPPED' -Message 'Registry not reachable: freshness cannot be verified.'
+                $results.Add($entry)
+                Write-AcrImageEntryLog -Entry $entry
+                continue
+            }
+            Write-Log -Level Warning -Message '  Freshness check skipped: registry probe failed. Pull will be attempted directly.'
+        }
+        else {
+            $freshnessProbe = Test-AcrImageFreshnessProbe -ResolvedImage ([string]$item.ResolvedImage) -RetryCount $retryCount -RetryDelaySeconds $retryDelay
+            if (-not $freshnessProbe.IsReachable) {
+                $entry = New-ReportEntry -Module 'ACR' -Item $item.Item -Status 'SKIPPED' -Message $freshnessProbe.Message
+                $results.Add($entry)
+                Write-AcrImageEntryLog -Entry $entry
+                continue
+            }
+            Write-Log -Level Info -Message '  Freshness check: verified from ACR metadata.'
+        }
 
         $timer = [System.Diagnostics.Stopwatch]::StartNew()
         $resolvedImage = [string]$item.ResolvedImage
@@ -269,6 +337,101 @@ function Get-AcrRegistryRepositories {
     return @(@($raw) | ForEach-Object { [string]$_ } | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 }
 
+function Get-AcrRegistryNetworkState {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Registry,
+        [int]$Port = 443,
+        [int]$TimeoutMilliseconds = 5000
+    )
+
+    $loginServer = "$Registry.azurecr.io"
+
+    try {
+        $addresses = @([System.Net.Dns]::GetHostAddresses($loginServer) | Where-Object {
+                $_.AddressFamily -in @(
+                    [System.Net.Sockets.AddressFamily]::InterNetwork,
+                    [System.Net.Sockets.AddressFamily]::InterNetworkV6
+                )
+            })
+    }
+    catch {
+        return @{
+            IsReachable = $false
+            LoginServer = $loginServer
+            Addresses = @()
+            HasPrivateAddress = $false
+            Message = "ACR login server '$loginServer' DNS resolution failed: $_"
+        }
+    }
+
+    if ($addresses.Count -eq 0) {
+        return @{
+            IsReachable = $false
+            LoginServer = $loginServer
+            Addresses = @()
+            HasPrivateAddress = $false
+            Message = "ACR login server '$loginServer' did not resolve to an IP address."
+        }
+    }
+
+    $addressTexts = @($addresses | ForEach-Object { $_.IPAddressToString } | Sort-Object -Unique)
+    $hasPrivateAddress = @($addresses | Where-Object { Test-AcrIpAddressPrivate -Address $_ }).Count -gt 0
+
+    foreach ($address in $addresses) {
+        $client = [System.Net.Sockets.TcpClient]::new()
+        try {
+            $connectTask = $client.ConnectAsync($address, $Port)
+            if ($connectTask.Wait($TimeoutMilliseconds) -and $client.Connected) {
+                return @{
+                    IsReachable = $true
+                    LoginServer = $loginServer
+                    Addresses = $addressTexts
+                    HasPrivateAddress = $hasPrivateAddress
+                    Message = "ACR login server '$loginServer' is reachable on TCP $Port."
+                }
+            }
+        }
+        catch {
+            Write-Log -Level Debug -Message "TCP connectivity check to '$loginServer' via '$($address.IPAddressToString):$Port' failed: $_"
+        }
+        finally {
+            $client.Dispose()
+        }
+    }
+
+    $privateHint = if ($hasPrivateAddress) {
+        'DNS resolves to a private address. Ensure VPN, private endpoint routing, and firewall rules allow TCP 443 to the registry login server.'
+    }
+    else {
+        'Ensure outbound TCP 443 to the registry login server is allowed from this machine.'
+    }
+
+    return @{
+        IsReachable = $false
+        LoginServer = $loginServer
+        Addresses = $addressTexts
+        HasPrivateAddress = $hasPrivateAddress
+        Message = "ACR login server '$loginServer' is not reachable on TCP $Port (resolved IPs: $($addressTexts -join ', ')). $privateHint"
+    }
+}
+
+function Test-AcrIpAddressPrivate {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][System.Net.IPAddress]$Address)
+
+    if ($Address.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+        return $false
+    }
+
+    $octets = $Address.GetAddressBytes()
+    return (
+        ($octets[0] -eq 10) -or
+        ($octets[0] -eq 172 -and $octets[1] -ge 16 -and $octets[1] -le 31) -or
+        ($octets[0] -eq 192 -and $octets[1] -eq 168)
+    )
+}
+
 function Test-AcrRegistryReachable {
     [CmdletBinding()]
     param(
@@ -297,7 +460,17 @@ function Test-AcrRegistryReachable {
                     $lineText = [string]$line
                     if ($lineText -match 'An error occurred:\s+(\S+)') {
                         $code = [string]$Matches[1]
-                        if ($code -notin @('HELM_COMMAND_ERROR', 'NOTARY_COMMAND_ERROR')) {
+                        $nonConnectivityErrors = @(
+                            'HELM_COMMAND_ERROR',
+                            'NOTARY_COMMAND_ERROR',
+                            'DOCKER_PULL_ERROR',
+                            'IMAGE_PULL_ERROR',
+                            'WINDOWS_OS_VERSION_ERROR',
+                            'DOCKER_DAEMON_ERROR',
+                            'DOCKER_VERSION_ERROR'
+                        )
+                        if ($code -notin $nonConnectivityErrors) {
+                            Write-Log -Level Warning -Message "ACR check-health connectivity error for '$Registry': $code"
                             $hasHardHealthError = $true
                             break
                         }
@@ -318,12 +491,13 @@ function Test-AcrRegistryReachable {
 
         Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "ACR reachability $Registry" -ScriptBlock {
             $probe = & az acr repository list --name $Registry --top 1 --only-show-errors --output tsv 2>&1
+            $probeText = (@($probe) -join ' ').Trim()
             if ($LASTEXITCODE -ne 0) {
-                throw "Registry '$Registry' not reachable"
+                throw "Registry '$Registry' not reachable. CLI output: $probeText"
             }
 
             if (Test-AzOutputIndicatesFailure -Output @($probe)) {
-                throw "Registry '$Registry' not reachable"
+                throw "Registry '$Registry' not reachable. CLI output: $probeText"
             }
         } | Out-Null
 
