@@ -43,6 +43,8 @@ Describe 'Get-DefaultConfig' {
         $config.modules.appInstaller.recommendedApps.winget | Should -BeTrue
         $config.modules.appInstaller.recommendedApps.vscode | Should -BeTrue
         $config.modules.appInstaller.recommendedApps.notepadplusplus | Should -BeTrue
+        $config.modules.appInstaller.recommendedApps.python3123 | Should -BeTrue
+        $config.modules.appInstaller.recommendedApps.python31012 | Should -BeFalse
         $config.modules.appInstaller.optionalApps.githubDesktop | Should -BeFalse
         $config.modules.appInstaller.optionalApps.inkscape | Should -BeFalse
         $config.modules.appInstaller.optionalApps.pythonLatest | Should -BeFalse

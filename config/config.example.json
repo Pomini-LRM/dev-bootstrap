@@ -17,7 +17,8 @@
         "winget": true,
         "nvmWindows": true,
         "notepadplusplus": true,
-        "python31012": true,
+        "python31012": false,
+        "python3123": true,
         "vscode": true
       },
       "optionalApps": {

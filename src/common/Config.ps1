@@ -27,7 +27,8 @@ function Get-DefaultConfig {
                     winget = $true
                     nvmWindows = $true
                     notepadplusplus = $true
-                    python31012 = $true
+                    python31012 = $false
+                    python3123 = $true
                     vscode = $true
                 }
                 optionalApps = @{
@@ -335,8 +336,17 @@ function ConvertTo-AppInstallerAppSelectionConfig {
         $appInstaller.optionalApps = @{}
     }
 
-    $recommendedKeys = @('gnuWin32Make', 'winget', 'nvmWindows', 'notepadplusplus', 'python31012', 'vscode')
-    foreach ($key in $recommendedKeys) {
+    $recommendedDefaults = @{
+        gnuWin32Make = $true
+        winget = $true
+        nvmWindows = $true
+        notepadplusplus = $true
+        python31012 = $false
+        python3123 = $true
+        vscode = $true
+    }
+
+    foreach ($key in $recommendedDefaults.Keys) {
         if ($appInstaller.optionalApps.ContainsKey($key)) {
             $appInstaller.recommendedApps[$key] = [bool]$appInstaller.optionalApps[$key]
             $appInstaller.optionalApps.Remove($key)
@@ -344,7 +354,7 @@ function ConvertTo-AppInstallerAppSelectionConfig {
         }
 
         if (-not $appInstaller.recommendedApps.ContainsKey($key)) {
-            $appInstaller.recommendedApps[$key] = $true
+            $appInstaller.recommendedApps[$key] = [bool]$recommendedDefaults[$key]
         }
     }
 

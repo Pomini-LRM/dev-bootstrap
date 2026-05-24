@@ -308,7 +308,8 @@ In `config/config.json`, app toggles are split into `recommendedApps` and `optio
     "gnuWin32Make": true,
     "notepadplusplus": true,
     "nvmWindows": true,
-    "python31012": true,
+    "python31012": false,
+    "python3123": true,
     "vscode": true,
     "winget": true
   },
@@ -371,6 +372,7 @@ Developer-only version management and release notes are documented here:
   - `notepadplusplus`
   - `nvmWindows`
   - `python31012`
+  - `python3123`
   - `vscode`
   - `winget`
 - Optional app toggles:

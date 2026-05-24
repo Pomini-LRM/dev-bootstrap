@@ -68,6 +68,14 @@
       "linuxCommand": "python3.10"
     },
     {
+      "key": "python3123",
+      "name": "Python 3.12.3",
+      "category": "recommended",
+      "wingetId": "Python.Python.3.12",
+      "linuxPackage": "python3.12",
+      "linuxCommand": "python3.12"
+    },
+    {
       "key": "vscode",
       "name": "Visual Studio Code",
       "category": "recommended",
