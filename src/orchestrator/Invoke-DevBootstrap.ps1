@@ -33,7 +33,7 @@ function Invoke-DevBootstrap {
     if (-not $Config.general.noConfirm -and -not $Config.general.silent) {
         $confirm = Read-HostSafe -Prompt "Proceed with '$RunMode' execution? (Y/n)"
         if ($confirm -and $confirm -notin @('y', 'Y', '')) {
-            $selectedRunMode = Select-RunModeFromEnabledModules -ModuleDefinitions $moduleDefinitions
+            $selectedRunMode = Select-RunModeFromEnabledModules -ModuleDefinitions $moduleDefinitions -ProjectRoot $ProjectRoot
             if ([string]::IsNullOrWhiteSpace($selectedRunMode)) {
                 Write-Log -Level Warning -Message 'Execution canceled by user.'
                 return 0
@@ -250,22 +250,26 @@ function Write-ConfiguredModuleSummary {
 
 function Select-RunModeFromEnabledModules {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][System.Collections.IEnumerable]$ModuleDefinitions)
+    param(
+        [Parameter(Mandatory)][System.Collections.IEnumerable]$ModuleDefinitions,
+        [Parameter(Mandatory)][string]$ProjectRoot
+    )
 
     $enabledModules = @($ModuleDefinitions | Where-Object { $_.Enabled })
     if ($enabledModules.Count -eq 0) {
         return ''
     }
 
-    Write-Log -Level Info -Message 'Select a module to run:'
-    for ($index = 0; $index -lt $enabledModules.Count; $index++) {
-        $module = $enabledModules[$index]
-        Write-Log -Level Info -Message ("  [{0}] Run {1}" -f ($index + 1), $module.Label)
-    }
-
-    Write-Log -Level Info -Message '  [0] Exit'
-
     while ($true) {
+        Write-Log -Level Info -Message 'Select a module to run:'
+        for ($index = 0; $index -lt $enabledModules.Count; $index++) {
+            $module = $enabledModules[$index]
+            Write-Log -Level Info -Message ("  [{0}] Run {1}" -f ($index + 1), $module.Label)
+        }
+
+        Write-Log -Level Info -Message '  [9] Run interactive configuration'
+        Write-Log -Level Info -Message '  [0] Exit'
+
         $choice = Read-HostSafe -Prompt 'Enter a number to run a module or 0 to exit'
 
         if ([string]::IsNullOrWhiteSpace($choice)) {
@@ -276,6 +280,38 @@ function Select-RunModeFromEnabledModules {
             $selectedIndex = [int]$choice
             if ($selectedIndex -eq 0) {
                 return ''
+            }
+
+            if ($selectedIndex -eq 9) {
+                $setupScript = Join-Path $ProjectRoot 'scripts' 'setup-config-interactive.ps1'
+                if (-not (Test-Path $setupScript)) {
+                    Write-Log -Level Warning -Message "Interactive setup script not found: $setupScript"
+                    continue
+                }
+
+                Write-Log -Level Info -Message "Launching interactive setup: $setupScript"
+                try {
+                    & $setupScript
+                    Write-Log -Level Info -Message 'Interactive setup finished.'
+                }
+                catch {
+                    Write-Log -Level Error -Message "Interactive setup failed: $_"
+                }
+
+                # Reload configuration and enabled modules after interactive setup
+                $configPath = Join-Path $ProjectRoot 'config' 'config.json'
+                if (Test-Path $configPath) {
+                    try {
+                        $newConfig = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json -Depth 10
+                        $ModuleDefinitions = Get-ConfiguredModuleDefinitions -Config $newConfig -ProjectRoot $ProjectRoot
+                        $enabledModules = @($ModuleDefinitions | Where-Object { $_.Enabled })
+                    }
+                    catch {
+                        Write-Log -Level Warning -Message "Could not reload configuration after interactive setup: $_"
+                    }
+                }
+
+                continue
             }
 
             if ($selectedIndex -ge 1 -and $selectedIndex -le $enabledModules.Count) {

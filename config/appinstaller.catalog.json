@@ -3,7 +3,7 @@
     "general": ["powershell7"],
     "github": ["git"],
     "devops": ["git"],
-    "acr": ["azure-cli", "docker"]
+    "acr": ["azure-cli", "docker", "helm"]
   },
   "apps": [
     {
@@ -21,6 +21,14 @@
       "wingetId": "Docker.DockerDesktop",
       "linuxPackage": "docker.io",
       "linuxCommand": "docker"
+    },
+    {
+      "key": "helm",
+      "name": "Helm",
+      "category": "required",
+      "wingetId": "Helm.Helm",
+      "supportedPlatforms": ["Windows"],
+      "linuxCommand": "helm"
     },
     {
       "key": "git",
