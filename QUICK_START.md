@@ -21,7 +21,7 @@ Close and reopen the terminal after installation.
 Interactive wizard (recommended):
 
 ```powershell
-pwsh .\scripts\setup-config-interactive.ps1
+pwsh -ExecutionPolicy Bypass .\scripts\setup-config-interactive.ps1
 ```
 
 Or manually:
@@ -42,7 +42,7 @@ pwsh -ExecutionPolicy Bypass .\dev-bootstrap.ps1
 Single module:
 
 ```powershell
-pwsh .\dev-bootstrap.ps1 -RunMode github
+pwsh -ExecutionPolicy Bypass .\dev-bootstrap.ps1 -RunMode github
 ```
 
 For full documentation, see [README.md](README.md).

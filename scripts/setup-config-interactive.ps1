@@ -578,7 +578,7 @@ else {
     $step++
 }
 
-Write-Host "  $step ) Run: pwsh .\dev-bootstrap.ps1"
+Write-Host "  $step ) Run: pwsh -ExecutionPolicy Bypass .\dev-bootstrap.ps1"
 
 
 
