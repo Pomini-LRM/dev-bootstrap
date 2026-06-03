@@ -24,19 +24,21 @@ function Get-DefaultConfig {
                 force = $false
                 recommendedApps = @{
                     gnuWin32Make = $true
-                    winget = $true
                     nvmWindows = $true
                     notepadplusplus = $true
                     python31012 = $false
                     python3123 = $true
                     vscode = $true
+                    winget = $true
                 }
                 optionalApps = @{
                     githubCopilot = $false
                     githubDesktop = $false
                     inkscape = $false
+                    microsoft365Copilot = $false
                     pythonLatest = $false
                     teamviewer = $false
+                    virtualbox = $false
                 }
             }
             automation = @{
@@ -338,12 +340,12 @@ function ConvertTo-AppInstallerAppSelectionConfig {
 
     $recommendedDefaults = @{
         gnuWin32Make = $true
-        winget = $true
         nvmWindows = $true
         notepadplusplus = $true
         python31012 = $false
         python3123 = $true
         vscode = $true
+        winget = $true
     }
 
     foreach ($key in $recommendedDefaults.Keys) {

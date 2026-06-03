@@ -440,14 +440,14 @@ if ($config.modules.appInstaller.enabled) {
 
     Write-Host ''
     Write-Host 'Recommended apps:' -ForegroundColor DarkGray
-    foreach ($app in @($catalog.apps | Where-Object { $_.category -eq 'recommended' })) {
+    foreach ($app in @($catalog.apps | Where-Object { $_.category -eq 'recommended' } | Sort-Object name)) {
         $prompt = "Enable recommended app: $($app.name)?"
         $config.modules.appInstaller.recommendedApps[$app.key] = Read-YesNo -Prompt $prompt -Default ([bool]$config.modules.appInstaller.recommendedApps[$app.key])
     }
 
     Write-Host ''
     Write-Host 'Optional apps:' -ForegroundColor DarkGray
-    foreach ($app in @($catalog.apps | Where-Object { $_.category -eq 'optional' })) {
+    foreach ($app in @($catalog.apps | Where-Object { $_.category -eq 'optional' } | Sort-Object name)) {
         $prompt = "Enable optional app: $($app.name)?"
         $config.modules.appInstaller.optionalApps[$app.key] = Read-YesNo -Prompt $prompt -Default ([bool]$config.modules.appInstaller.optionalApps[$app.key])
     }

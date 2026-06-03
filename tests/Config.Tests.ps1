@@ -40,15 +40,18 @@ Describe 'Get-DefaultConfig' {
     It 'defines optional app toggles for appInstaller' {
         $config = Get-DefaultConfig
         $config.modules.appInstaller.recommendedApps.gnuWin32Make | Should -BeTrue
-        $config.modules.appInstaller.recommendedApps.winget | Should -BeTrue
-        $config.modules.appInstaller.recommendedApps.vscode | Should -BeTrue
         $config.modules.appInstaller.recommendedApps.notepadplusplus | Should -BeTrue
+        $config.modules.appInstaller.recommendedApps.nvmWindows | Should -BeTrue
         $config.modules.appInstaller.recommendedApps.python3123 | Should -BeTrue
         $config.modules.appInstaller.recommendedApps.python31012 | Should -BeFalse
+        $config.modules.appInstaller.recommendedApps.vscode | Should -BeTrue
+        $config.modules.appInstaller.recommendedApps.winget | Should -BeTrue
         $config.modules.appInstaller.optionalApps.githubDesktop | Should -BeFalse
         $config.modules.appInstaller.optionalApps.inkscape | Should -BeFalse
+        $config.modules.appInstaller.optionalApps.microsoft365Copilot | Should -BeFalse
         $config.modules.appInstaller.optionalApps.pythonLatest | Should -BeFalse
         $config.modules.appInstaller.optionalApps.teamviewer | Should -BeFalse
+        $config.modules.appInstaller.optionalApps.virtualbox | Should -BeFalse
         $config.modules.automation.catalog.desktopLinkForThisApplication | Should -BeFalse
     }
 

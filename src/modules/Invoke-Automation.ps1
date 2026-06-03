@@ -70,11 +70,17 @@ function Invoke-Automation {
                         $result = @{ Status = 'ERROR'; Message = "Script file not found: $scriptPath" }
                     }
                     else {
-                        $previousExitCode = $global:LASTEXITCODE
+                        $previousExitCodeVariable = Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
+                        $previousExitCode = if ($previousExitCodeVariable) { $global:LASTEXITCODE } else { $null }
                         $global:LASTEXITCODE = 0
                         $result = & $scriptPath -ModuleConfig $moduleConfig -ProjectRoot $ProjectRoot
                         $scriptExitCode = $global:LASTEXITCODE
-                        $global:LASTEXITCODE = $previousExitCode
+                        if ($previousExitCodeVariable) {
+                            $global:LASTEXITCODE = $previousExitCode
+                        }
+                        else {
+                            Remove-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
+                        }
 
                         if ($scriptExitCode -ne 0) {
                             $result = @{ Status = 'ERROR'; Message = "Script '$scriptFile' failed with exit code $scriptExitCode." }

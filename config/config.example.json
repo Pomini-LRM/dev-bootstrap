@@ -14,19 +14,21 @@
       "force": false,
       "recommendedApps": {
         "gnuWin32Make": true,
-        "winget": true,
         "nvmWindows": true,
         "notepadplusplus": true,
         "python31012": false,
         "python3123": true,
-        "vscode": true
+        "vscode": true,
+        "winget": true
       },
       "optionalApps": {
         "githubCopilot": false,
         "githubDesktop": false,
         "inkscape": false,
+        "microsoft365Copilot": false,
         "pythonLatest": false,
-        "teamviewer": false
+        "teamviewer": false,
+        "virtualbox": false
       }
     },
     "automation": {

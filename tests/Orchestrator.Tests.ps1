@@ -40,7 +40,7 @@ Describe 'Configured module summary' {
         Mock -CommandName Read-HostSafe -MockWith { '2' }
         Mock -CommandName Write-Log -MockWith { }
 
-        $selectedRunMode = Select-RunModeFromEnabledModules -ModuleDefinitions $definitions
+        $selectedRunMode = Select-RunModeFromEnabledModules -ModuleDefinitions $definitions -ProjectRoot $projectRoot
 
         $selectedRunMode | Should -Be 'automation'
     }
@@ -54,7 +54,7 @@ Describe 'Configured module summary' {
         Mock -CommandName Read-HostSafe -MockWith { '0' }
         Mock -CommandName Write-Log -MockWith { }
 
-        $selectedRunMode = Select-RunModeFromEnabledModules -ModuleDefinitions $definitions
+        $selectedRunMode = Select-RunModeFromEnabledModules -ModuleDefinitions $definitions -ProjectRoot $projectRoot
 
         $selectedRunMode | Should -Be ''
     }

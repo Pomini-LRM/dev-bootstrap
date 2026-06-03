@@ -81,6 +81,24 @@ Describe 'Get-EffectiveAppList' {
 
         $missing | Should -Contain 'legacyRemovedApp'
     }
+
+    It 'keeps catalog apps sorted alphabetically within each category' {
+        $catalog = Read-AppInstallerCatalog -ProjectRoot $projectRoot
+
+        foreach ($category in @('required', 'recommended', 'optional')) {
+            $names = @($catalog.apps | Where-Object { $_.category -eq $category } | ForEach-Object { $_.name })
+            $sortedNames = @($names | Sort-Object)
+            $names | Should -Be $sortedNames
+        }
+    }
+
+    It 'includes the new optional app entries' {
+        $catalog = Read-AppInstallerCatalog -ProjectRoot $projectRoot
+        $keys = @($catalog.apps | ForEach-Object { $_.key })
+
+        $keys | Should -Contain 'virtualbox'
+        $keys | Should -Contain 'microsoft365Copilot'
+    }
 }
 
 Describe 'Invoke-AppInstaller' {
