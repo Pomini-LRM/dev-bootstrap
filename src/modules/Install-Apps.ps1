@@ -329,6 +329,63 @@ function Install-WindowsApp {
     return @{ Status = 'ERROR'; Message = "Unsupported package manager: $($PackageManager.Name)" }
 }
 
+function Invoke-PostInstallHooks {
+    <#
+    .SYNOPSIS
+        Executes post-installation hooks for specific applications.
+
+    .DESCRIPTION
+        After successful installation of certain applications, run platform-specific configuration tasks:
+        - VSCode: Add context menu entries to Windows registry
+        - git, nvm, docker, etc.: Refresh environment variables from system registry
+
+    .PARAMETER App
+        The application hashtable from the catalog.
+
+    .PARAMETER Status
+        Installation status (INSTALLED, DEFERRED, etc.). Hooks only run on INSTALLED.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$App,
+        [string]$Status = 'INSTALLED'
+    )
+
+    if ($Status -ne 'INSTALLED' -and $Status -ne 'UPDATED') {
+        return
+    }
+
+    $appKey = [string]$App.key
+
+    # Apps that modify PATH or environment variables: refresh system environment
+    $pathModifyingApps = @('git', 'nvmWindows', 'python31012', 'python3123', 'python3', 'pythonLatest', 'docker', 'azure-cli', 'powershell7')
+    if ($appKey -in $pathModifyingApps) {
+        Write-Log -Level Debug -Message "Syncing environment variables after installing '$($App.name)'..."
+        Sync-EnvironmentVariablesFromSystem
+    }
+
+    # VSCode: add context menu entries
+    if ($appKey -eq 'vscode') {
+        Write-Log -Level Debug -Message "Adding VSCode context menu entries..."
+        Add-VSCodeContextMenu
+    }
+}
+
+function Install-WindowsApp {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$App,
+        [Parameter(Mandatory)][hashtable]$PackageManager,
+        [switch]$Force
+    )
+
+    if ($PackageManager.Name -eq 'winget') {
+        return (Install-ViaWinget -App $App -Force:$Force)
+    }
+
+    return @{ Status = 'ERROR'; Message = "Unsupported package manager: $($PackageManager.Name)" }
+}
+
 function Install-ViaWinget {
     [CmdletBinding()]
     param(
@@ -374,6 +431,7 @@ function Install-ViaWinget {
         $upgradeResult = Invoke-WingetUpgradeWithRetry -App $App -AppId $appId
         if ($upgradeResult.ExitCode -eq 0) {
             $postVersionInfo = Get-WingetVersionInfo -AppId $appId
+            Invoke-PostInstallHooks -App $App -Status 'UPDATED'
             return @{ Status = 'INSTALLED'; Message = (Format-WingetVersionMessage -BaseMessage 'Upgraded via winget' -VersionInfo $postVersionInfo) }
         }
 
@@ -398,6 +456,7 @@ function Install-ViaWinget {
     $installResult = Invoke-WingetInstallWithRetry -App $App -AppId $appId
     if ($installResult.ExitCode -eq 0) {
         $postVersionInfo = Get-WingetVersionInfo -AppId $appId
+        Invoke-PostInstallHooks -App $App -Status 'INSTALLED'
         return @{ Status = 'INSTALLED'; Message = (Format-WingetVersionMessage -BaseMessage 'Installed via winget' -VersionInfo $postVersionInfo) }
     }
 
@@ -408,6 +467,7 @@ function Install-ViaWinget {
         $upgradeResult = Invoke-WingetUpgradeWithRetry -App $App -AppId $appId
         if ($upgradeResult.ExitCode -eq 0) {
             $postVersionInfo = Get-WingetVersionInfo -AppId $appId
+            Invoke-PostInstallHooks -App $App -Status 'UPDATED'
             return @{ Status = 'INSTALLED'; Message = (Format-WingetVersionMessage -BaseMessage 'Upgraded via winget' -VersionInfo $postVersionInfo) }
         }
 

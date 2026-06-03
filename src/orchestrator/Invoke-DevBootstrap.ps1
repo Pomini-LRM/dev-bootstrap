@@ -176,6 +176,12 @@ function Invoke-DevBootstrap {
     Write-Log -Level Info -Message 'dev-bootstrap - Run completed'
     Write-Log -Level Info -Message '============================================='
 
+    # Show post-install instructions if app installer was executed
+    $appInstallerExecuted = @($moduleExecutions | Where-Object { $_.Name -eq 'appinstaller' -and $_.Status -ne 'SKIPPED' }).Count -gt 0
+    if ($appInstallerExecuted -and $errorCount -eq 0) {
+        Write-PostInstallInstructions -ProjectRoot $ProjectRoot
+    }
+
     return $(if ($errorCount -gt 0) { 1 } else { 0 })
 }
 

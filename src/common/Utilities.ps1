@@ -534,3 +534,226 @@ function Find-WindowsIconPath {
 
     return $null
 }
+
+function Sync-EnvironmentVariablesFromSystem {
+    <#
+    .SYNOPSIS
+        Refreshes Process-scoped environment variables from Machine and User scopes.
+
+    .DESCRIPTION
+        After software installations that modify PATH or other system environment variables,
+        this function synchronizes the current process session with the updated system environment.
+        This ensures newly installed tools become accessible without restarting the terminal.
+
+    .EXAMPLE
+        Sync-EnvironmentVariablesFromSystem
+        Refreshes PATH and other environment variables in the current PowerShell session.
+    #>
+    [CmdletBinding()]
+    param()
+
+    try {
+        Write-Log -Level Debug -Message 'Refreshing environment variables from system registry...'
+
+        # Reload PATH from Machine and User scopes
+        $machinePathValue = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine')
+        $userPathValue = [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+
+        if ($null -eq $machinePathValue) { $machinePathValue = '' }
+        if ($null -eq $userPathValue) { $userPathValue = '' }
+
+        $newPath = if ($userPathValue -and $machinePathValue) {
+            "$userPathValue;$machinePathValue"
+        }
+        elseif ($userPathValue) {
+            $userPathValue
+        }
+        else {
+            $machinePathValue
+        }
+
+        [System.Environment]::SetEnvironmentVariable('PATH', $newPath, 'Process')
+        $env:PATH = $newPath
+
+        Write-Log -Level Debug -Message "Environment variables synced. Current PATH contains $([regex]::Matches($newPath, ';').Count + 1) entries."
+    }
+    catch {
+        Write-Log -Level Warning -Message "Failed to refresh environment variables: $_"
+    }
+}
+
+function Add-VSCodeContextMenu {
+    <#
+    .SYNOPSIS
+        Adds "Open with Code" context menu entries to Windows registry.
+
+    .DESCRIPTION
+        After VSCode is installed via winget with --silent, the post-install hooks that normally
+        add context menu entries may not run. This function manually adds:
+        - "Open with Code" for files (*\shell\VSCode)
+        - "Open with Code" for folders (Directory\shell\VSCode)
+        - "Open with Code" for folder backgrounds (Directory\Background\shell\VSCode)
+
+        Requires Administrator privileges to modify HKEY_CLASSES_ROOT registry.
+
+    .EXAMPLE
+        Add-VSCodeContextMenu
+        Adds VSCode context menu entries to Windows Explorer.
+    #>
+    [CmdletBinding()]
+    param()
+
+    if (-not (Test-IsWindows)) {
+        Write-Log -Level Debug -Message 'VSCode context menu configuration skipped on non-Windows platform.'
+        return
+    }
+
+    $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [System.Security.Principal.WindowsPrincipal]$currentIdentity
+    if (-not $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        Write-Log -Level Warning -Message 'VSCode context menu requires Administrator privileges. Skipping.'
+        return
+    }
+
+    try {
+        # Try to find VSCode executable path
+        $codeExePath = $null
+
+        # Check common installation paths
+        $possiblePaths = @(
+            'C:\Program Files\Microsoft VS Code\bin\code.cmd',
+            'C:\Program Files (x86)\Microsoft VS Code\bin\code.cmd',
+            "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd"
+        )
+
+        foreach ($path in $possiblePaths) {
+            if (Test-Path -LiteralPath $path) {
+                $codeExePath = $path
+                break
+            }
+        }
+
+        # If not found in standard paths, try to locate via Registry or PATH
+        if (-not $codeExePath) {
+            try {
+                $codeExePath = & where.exe code.cmd 2>$null | Select-Object -First 1
+            }
+            catch {
+                Write-Log -Level Debug -Message "Unable to locate VSCode executable: $_"
+            }
+        }
+
+        if (-not $codeExePath) {
+            Write-Log -Level Warning -Message 'VSCode executable not found. Context menu entries may not work correctly.'
+            $codeExePath = 'code.cmd'
+        }
+
+        Write-Log -Level Debug -Message "Adding VSCode context menu entries. Code path: $codeExePath"
+
+        # Registry paths where context menu entries are stored
+        $registryPaths = @(
+            'Registry::HKEY_CLASSES_ROOT\*\shell\VSCode',
+            'Registry::HKEY_CLASSES_ROOT\Directory\shell\VSCode',
+            'Registry::HKEY_CLASSES_ROOT\Directory\Background\shell\VSCode'
+        )
+
+        foreach ($regPath in $registryPaths) {
+            try {
+                # Create the registry key if it doesn't exist
+                if (-not (Test-Path -LiteralPath $regPath)) {
+                    New-Item -Path $regPath -Force | Out-Null
+                }
+
+                # Set the display name
+                Set-ItemProperty -LiteralPath $regPath -Name '(Default)' -Value 'Open with Code' -Force
+
+                # Create the command subkey
+                $commandPath = Join-Path $regPath 'command'
+                if (-not (Test-Path -LiteralPath $commandPath)) {
+                    New-Item -Path $commandPath -Force | Out-Null
+                }
+
+                # Set the command to run VSCode
+                Set-ItemProperty -LiteralPath $commandPath -Name '(Default)' -Value "`"$codeExePath`" `"%1`"" -Force
+
+                Write-Log -Level Debug -Message "Added VSCode context menu for: $regPath"
+            }
+            catch {
+                Write-Log -Level Warning -Message "Failed to add VSCode context menu for '$regPath': $_"
+            }
+        }
+
+        Write-Log -Level Info -Message 'VSCode context menu entries added successfully.'
+    }
+    catch {
+        Write-Log -Level Warning -Message "Failed to add VSCode context menu: $_"
+    }
+}
+
+function Write-PostInstallInstructions {
+    <#
+    .SYNOPSIS
+        Displays post-installation instructions and recommendations.
+
+    .DESCRIPTION
+        After successful app installation, provides guidance on:
+        - Verifying installed tools via PATH
+        - Restarting shells/IDEs to pick up environment changes
+        - Known issues and workarounds
+
+    .PARAMETER ProjectRoot
+        The dev-bootstrap project root path.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ProjectRoot
+    )
+
+    Write-Log -Level Info -Message ''
+    Write-Log -Level Info -Message '========== POST-INSTALLATION INSTRUCTIONS =========='
+    Write-Log -Level Info -Message ''
+
+    # Check if running as admin
+    $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [System.Security.Principal.WindowsPrincipal]$currentIdentity
+    $isAdmin = $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+
+    if (-not $isAdmin) {
+        Write-Log -Level Warning -Message "This script was NOT executed as Administrator."
+        Write-Log -Level Warning -Message "Some tools (git, nvm, docker, etc.) may not be accessible yet."
+        Write-Log -Level Warning -Message ''
+        Write-Log -Level Info -Message "Recommended next steps:"
+        Write-Log -Level Info -Message "1. CLOSE this terminal and all open shells/terminals"
+        Write-Log -Level Info -Message "2. Open a NEW terminal (regular or Administrator)"
+        Write-Log -Level Info -Message "3. Verify installed tools are now available:"
+        Write-Log -Level Info -Message "   - git --version"
+        Write-Log -Level Info -Message "   - nvm --version"
+        Write-Log -Level Info -Message "   - docker --version"
+        Write-Log -Level Info -Message "   - code --version"
+        Write-Log -Level Info -Message "4. If tools are still not found:"
+        Write-Log -Level Info -Message "   - Run dev-bootstrap again AS ADMINISTRATOR"
+        Write-Log -Level Info -Message "   - Or manually add installation paths to your PATH environment variable"
+        Write-Log -Level Info -Message ''
+    }
+    else {
+        Write-Log -Level Info -Message "Executed as Administrator - environment variables should be active."
+        Write-Log -Level Info -Message ''
+        Write-Log -Level Info -Message "Quick verification (in a NEW terminal):"
+        Write-Log -Level Info -Message "   git --version"
+        Write-Log -Level Info -Message "   nvm --version"
+        Write-Log -Level Info -Message "   docker --version"
+        Write-Log -Level Info -Message "   code --version"
+        Write-Log -Level Info -Message ''
+    }
+
+    Write-Log -Level Info -Message "IDE integration:"
+    Write-Log -Level Info -Message "  - VSCode: Restart VSCode to pick up new PATH changes"
+    Write-Log -Level Info -Message "  - Other IDEs: Restart to ensure terminal inherits updated environment"
+    Write-Log -Level Info -Message ''
+
+    Write-Log -Level Info -Message "For troubleshooting, see: docs/troubleshooting-fresh-install.md"
+    Write-Log -Level Info -Message '======================================================'
+    Write-Log -Level Info -Message ''
+}
+
+

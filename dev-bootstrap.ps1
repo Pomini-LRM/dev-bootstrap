@@ -73,6 +73,34 @@ if ($currentPolicy -notin @('Bypass', 'Unrestricted')) {
     Write-Host 'Continuing with current ExecutionPolicy.' -ForegroundColor DarkGray
 }
 
+# Guard: ensure script runs with Administrator privileges (required for registry modifications and PATH updates).
+$currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = [System.Security.Principal.WindowsPrincipal]$currentIdentity
+$isAdmin = $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $isAdmin) {
+    Write-Host '' -ForegroundColor Yellow
+    Write-Host 'dev-bootstrap requires Administrator privileges.' -ForegroundColor Yellow
+    Write-Host 'This is needed to: modify system PATH, add VSCode context menu, and install software.' -ForegroundColor Yellow
+    Write-Host '' -ForegroundColor Yellow
+    $answer = Read-Host 'Restart as Administrator? [Y/n]'
+    if ([string]::IsNullOrWhiteSpace($answer) -or $answer.Trim().ToLowerInvariant() -in @('y', 'yes')) {
+        $argList = @('-NoProfile', '-File', $MyInvocation.MyCommand.Path)
+        foreach ($p in $PSBoundParameters.GetEnumerator()) {
+            if ($p.Value -is [switch]) {
+                if ($p.Value.IsPresent) { $argList += "-$($p.Key)" }
+            }
+            else {
+                $argList += "-$($p.Key)"
+                $argList += "$($p.Value)"
+            }
+        }
+        $proc = Start-Process -FilePath 'pwsh' -ArgumentList $argList -Wait -PassThru -Verb RunAs
+        exit $proc.ExitCode
+    }
+    Write-Host 'Continuing without Administrator privileges. Some operations may fail.' -ForegroundColor Yellow
+}
+
 $projectRoot = $PSScriptRoot
 
 . (Join-Path $projectRoot 'src' 'common' 'Logger.ps1')
