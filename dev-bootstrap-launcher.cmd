@@ -1,5 +1,10 @@
 @echo off
 setlocal
+net session >nul 2>&1
+if %errorlevel% neq 0 (
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath 'pwsh' -Verb RunAs -WorkingDirectory '%~dp0' -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','%~dp0dev-bootstrap.ps1'"
+  goto :end
+)
 where pwsh >nul 2>nul
 if %errorlevel%==0 (
   pwsh -NoProfile -Command "if ($PSVersionTable.PSVersion.Major -ge 7) { exit 0 } else { exit 1 }"
@@ -21,13 +26,13 @@ where powershell >nul 2>nul
 if %errorlevel% neq 0 (
   echo Windows PowerShell is not available either. Using CMD-based installer.
   echo.
-  set /p RUN_CMD=Do you want to install PowerShell 7 via winget now? [Y/n]: 
+  set /p RUN_CMD=Do you want to install PowerShell 7 via winget now? [Y/n]:
   if /I "%RUN_CMD%"=="" goto :runCmdInstall
   if /I "%RUN_CMD%"=="y" goto :runCmdInstall
   if /I "%RUN_CMD%"=="yes" goto :runCmdInstall
   goto :end
 )
-set /p RUN_PREP=Do you want to run scripts\install-prerequisites-windows.ps1 now? [Y/n]: 
+set /p RUN_PREP=Do you want to run scripts\install-prerequisites-windows.ps1 now? [Y/n]:
 if /I "%RUN_PREP%"=="" goto :runInstall
 if /I "%RUN_PREP%"=="y" goto :runInstall
 if /I "%RUN_PREP%"=="yes" goto :runInstall

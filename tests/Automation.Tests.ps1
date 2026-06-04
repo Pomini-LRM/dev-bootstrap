@@ -84,6 +84,13 @@ Describe 'Script path resolution' {
             Test-Path -LiteralPath $scriptPath | Should -Be $true -Because "Script '$($entry.scriptFile)' for key '$($entry.key)' should exist"
         }
     }
+
+    It 'launcher self-elevates before running dev-bootstrap' {
+        $launcherPath = Join-Path $projectRoot 'dev-bootstrap-launcher.cmd'
+        $launcherContent = Get-Content -LiteralPath $launcherPath -Raw
+
+        $launcherContent | Should -Match "Start-Process -FilePath 'pwsh' -Verb RunAs"
+    }
 }
 
 # ── Execution: happy path with mock script ──────────────────────────────────
