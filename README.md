@@ -535,7 +535,7 @@ Final report statuses:
 For contributors and maintainers:
 
 - Versioning workflow: `docs/developer-versioning.md`
-- App catalog authoring (where to find `wingetId`, `linuxPackage`, `linuxCommand`): `docs/developer-app-catalog.md`
+- App catalog authoring (where to find `wingetId`, `linuxPackage`, `linuxCommand`, and optional `wingetInstallOverride` values): `docs/developer-app-catalog.md`
 - CI quality gates: `.github/workflows/ci.yml`
 - Static analysis policy: `PSScriptAnalyzerSettings.psd1`
 - Local formatter: `pwsh ./scripts/Format-Code.ps1`

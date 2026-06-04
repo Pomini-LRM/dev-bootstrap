@@ -23,6 +23,7 @@ Each app entry defines metadata used by `appInstaller` across platforms:
 - `name`: display name in logs and reports.
 - `category`: one of `required`, `recommended`, `optional`.
 - `wingetId`: package ID for Windows (`winget`).
+- `wingetInstallOverride` (optional): extra arguments passed to `winget install --override` for installers that need post-install choices, such as VS Code.
 - `linuxPackage`: package name used by Linux package manager.
 - `linuxCommand`: executable command expected after install.
 - `supportedPlatforms` (optional): restrict app to specific platforms (for example `"Windows"`).
@@ -90,13 +91,14 @@ If an app is moved between categories, update defaults in:
 1. Add or update entry in `config/appinstaller.catalog.json`.
 2. Keep app ordering by group, then alphabetical within the group.
 3. Ensure `key` uniqueness.
-4. Run tests:
+4. Use `wingetInstallOverride` only when the installer needs non-default winget choices.
+5. Run tests:
 
 ```powershell
 Invoke-Pester -Path ./tests/
 ```
 
-5. Optional runtime verification:
+6. Optional runtime verification:
 
 ```powershell
 pwsh ./dev-bootstrap.ps1 -RunMode appInstaller -NoConfirm

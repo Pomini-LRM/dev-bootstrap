@@ -256,6 +256,25 @@ Describe 'Get-WingetLatestAvailableVersion' {
     }
 }
 
+Describe 'Get-WingetInstallArguments' {
+    It 'adds override arguments when configured' {
+        $args = Get-WingetInstallArguments -App @{
+            wingetInstallOverride = "/GA /mergetasks='!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles'"
+        } -AppId 'Microsoft.VisualStudioCode'
+
+        $args | Should -Contain '--override'
+        $args | Should -Contain "/GA /mergetasks='!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles'"
+    }
+
+    It 'keeps the base winget install arguments when override is absent' {
+        $args = Get-WingetInstallArguments -App @{} -AppId 'Git.Git'
+
+        $args | Should -Not -Contain '--override'
+        $args | Should -Contain 'install'
+        $args | Should -Contain 'Git.Git'
+    }
+}
+
 Describe 'Get-CommandVersionInfo' {
     It 'supports powershell7 through pwsh --version output' {
         Mock -CommandName Test-CommandExists -ParameterFilter { $CommandName -eq 'pwsh' } -MockWith { $true }

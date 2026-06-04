@@ -550,6 +550,35 @@ function Test-ShouldDeferPowerShellSelfUpgrade {
     return $current -ne $latest
 }
 
+function Get-WingetInstallArguments {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$App,
+        [Parameter(Mandatory)][string]$AppId
+    )
+
+    $arguments = [System.Collections.Generic.List[string]]::new()
+    foreach ($argument in @(
+            'install',
+            '--id', $AppId,
+            '--exact',
+            '--source', 'winget',
+            '--accept-source-agreements',
+            '--accept-package-agreements',
+            '--disable-interactivity',
+            '--silent')) {
+        $arguments.Add($argument)
+    }
+
+    $override = [string]$App.wingetInstallOverride
+    if (-not [string]::IsNullOrWhiteSpace($override)) {
+        $arguments.Add('--override')
+        $arguments.Add($override)
+    }
+
+    return @($arguments)
+}
+
 function Invoke-WingetInstallWithRetry {
     [CmdletBinding()]
     param(
@@ -557,14 +586,15 @@ function Invoke-WingetInstallWithRetry {
         [Parameter(Mandatory)][string]$AppId
     )
 
-    $output = & winget install --id $AppId --exact --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity --silent 2>&1
+    $wingetArguments = Get-WingetInstallArguments -App $App -AppId $AppId
+    $output = & winget @wingetArguments 2>&1
     $exitCode = $LASTEXITCODE
 
     if ($exitCode -ne 0 -and (Test-WingetAppInUseOutput -Output $output)) {
         $closed = Stop-AppProcessesForInstall -App $App
         if ($closed) {
             Write-Log -Level Warning -Message "Detected running process for '$($App.name)'. Retrying winget install after stopping app."
-            $output = & winget install --id $AppId --exact --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity --silent 2>&1
+            $output = & winget @wingetArguments 2>&1
             $exitCode = $LASTEXITCODE
         }
     }
