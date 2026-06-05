@@ -52,6 +52,12 @@ Output is generated under `artifacts/` with:
 - `dev-bootstrap-windows-vX.Y.Z.zip`
 - `dev-bootstrap-windows-vX.Y.Z.zip.sha256`
 
+Package characteristics:
+
+- The ZIP is built for distribution without shipping `.ps1/.psm1/.psd1` source files.
+- Runtime logic is bundled into `dev-bootstrap.exe`.
+- Keep `modules.automation.enabled = false` in the distributed config unless you distribute source scripts separately.
+
 ## Publish GitHub Release (Automated)
 
 For maintainers, this command automates:
