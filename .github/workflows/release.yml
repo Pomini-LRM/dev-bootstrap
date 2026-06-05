@@ -122,16 +122,36 @@ jobs:
             $archive.Dispose()
           }
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: "dev-bootstrap ${{ steps.build.outputs.version }}"
-          generate_release_notes: true
-          fail_on_unmatched_files: true
-          files: |
-            ${{ steps.build.outputs.exe_path }}
-            ${{ steps.build.outputs.zip_path }}
-            ${{ steps.build.outputs.sha_path }}
+      - name: Create or update GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $title = 'dev-bootstrap ${{ steps.build.outputs.version }}'
+          $exePath = '${{ steps.build.outputs.exe_path }}'
+          $zipPath = '${{ steps.build.outputs.zip_path }}'
+          $shaPath = '${{ steps.build.outputs.sha_path }}'
+
+          foreach ($asset in @($exePath, $zipPath, $shaPath)) {
+            if (-not (Test-Path -LiteralPath $asset)) {
+              throw "Release asset not found: $asset"
+            }
+          }
+
+          gh release view $tag | Out-Null 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $exePath $zipPath $shaPath --clobber
+            if ($LASTEXITCODE -ne 0) {
+              throw "Unable to upload release assets for tag: $tag"
+            }
+          }
+          else {
+            gh release create $tag $exePath $zipPath $shaPath --title $title --generate-notes
+            if ($LASTEXITCODE -ne 0) {
+              throw "Unable to create GitHub release for tag: $tag"
+            }
+          }
 
       - name: Step Summary
         shell: pwsh
