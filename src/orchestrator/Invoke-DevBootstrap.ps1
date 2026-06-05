@@ -239,10 +239,14 @@ function Write-ConfiguredModuleSummary {
     $enabledRows = @($rows | Where-Object { $_.Enabled })
 
     Write-Log -Level Info -Message 'Configured modules:'
+    Write-Log -Level Info -Message '  MODULE              STATE     SCRIPT'
+    Write-Log -Level Info -Message '  ------------------  --------  -------------------------'
     foreach ($module in $rows) {
         $stateText = if ($module.Enabled) { 'enabled' } else { 'disabled' }
+        $labelText = ([string]$module.Label).PadRight(18)
+        $stateColumn = $stateText.PadRight(8)
         $scriptName = Split-Path -Leaf ([string]$module.ScriptPath)
-        Write-Log -Level Info -Message "  - $($module.Label): $stateText ($scriptName)"
+        Write-Log -Level Info -Message "  $labelText  $stateColumn  $scriptName"
     }
 
     if ($enabledRows.Count -gt 0) {
