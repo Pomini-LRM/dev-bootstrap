@@ -96,7 +96,13 @@ jobs:
         shell: pwsh
         run: |
           Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $exePath = '${{ steps.build.outputs.exe_path }}'
           $zipPath = '${{ steps.build.outputs.zip_path }}'
+
+          if (-not (Test-Path -LiteralPath $exePath)) {
+            throw "EXE asset not found: $exePath"
+          }
+
           if (-not (Test-Path -LiteralPath $zipPath)) {
             throw "ZIP asset not found: $zipPath"
           }
@@ -121,6 +127,7 @@ jobs:
         with:
           name: "dev-bootstrap ${{ steps.build.outputs.version }}"
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
             ${{ steps.build.outputs.exe_path }}
             ${{ steps.build.outputs.zip_path }}

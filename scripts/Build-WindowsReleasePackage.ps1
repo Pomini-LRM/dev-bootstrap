@@ -206,6 +206,10 @@ if (-not $SkipExeBuild) {
             -x64 `
             -title 'dev-bootstrap' `
             -description 'POMINI dev-bootstrap'
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "PS2EXE compilation failed with exit code: $LASTEXITCODE"
+        }
     }
     finally {
         if (Test-Path -LiteralPath $bundledScriptPath) {
@@ -215,6 +219,10 @@ if (-not $SkipExeBuild) {
 }
 else {
     Set-Content -LiteralPath $exePath -Value 'EXE build skipped by request.' -Encoding ascii
+}
+
+if (-not (Test-Path -LiteralPath $exePath)) {
+    throw "Executable not found after build: $exePath"
 }
 
 Copy-Item -LiteralPath $envExamplePath -Destination (Join-Path $stagingRoot '.env.example') -Force
