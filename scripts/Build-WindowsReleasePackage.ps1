@@ -85,15 +85,15 @@ function Get-NormalizedScriptContent {
     )
 
     $content = Get-Content -LiteralPath $Path -Raw -Encoding utf8
-    $content = [regex]::Replace($content, "(?m)^#!/usr/bin/env pwsh\s*\r?\n", '')
-    $content = [regex]::Replace($content, "(?m)^#Requires\s+-Version\s+.+\r?\n", '')
+    $content = [regex]::Replace($content, '(?m)^#!/usr/bin/env pwsh\s*\r?\n', '')
+    $content = [regex]::Replace($content, '(?m)^#Requires\s+-Version\s+.+\r?\n', '')
 
     if ($StripModuleDotSource) {
-        $content = [regex]::Replace($content, "(?m)^\s*\.\s+\$module\.ScriptPath\s*\r?\n", '')
+        $content = [regex]::Replace($content, '(?m)^\s*\.\s+\$module\.ScriptPath\s*\r?\n', '')
     }
 
     if ($StripEntrypointDotSource) {
-        $content = [regex]::Replace($content, "(?m)^\s*\.\s*\(Join-Path\s+\$projectRoot\s+'src'.+\)\s*\r?\n", '')
+        $content = [regex]::Replace($content, '(?m)^\s*\.\s*\(Join-Path\s+\$projectRoot\s+''src''.+\)\s*\r?\n', '')
     }
 
     return $content.Trim() + "`r`n"
