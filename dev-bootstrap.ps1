@@ -42,11 +42,25 @@ param(
     [switch]$NoConfirm,
     [switch]$FailFast,
     [switch]$Force,
-    [switch]$ShowVersion
+    [switch]$ShowVersion,
+    [switch]$PauseBeforeExit
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+function Wait-BeforeExit {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][int]$ExitCode
+    )
+
+    if ($PauseBeforeExit) {
+        Read-Host 'Press ENTER to close'
+    }
+
+    exit $ExitCode
+}
 
 # Guard: warn if ExecutionPolicy is not Bypass.
 $currentPolicy = Get-ExecutionPolicy
@@ -116,7 +130,7 @@ $scriptVersion = Get-DevBootstrapVersion -ProjectRoot $projectRoot
 
 if ($ShowVersion) {
     Write-Host "dev-bootstrap version: $scriptVersion"
-    exit 0
+    Wait-BeforeExit -ExitCode 0
 }
 
 $defaultConfigPath = Join-Path $projectRoot 'config' 'config.json'
@@ -179,7 +193,7 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
     Write-Host 'Quick start:' -ForegroundColor Cyan
     Write-Host '  1) Manual: copy config\config.example.json config\config.json'
     Write-Host '  2) Interactive: pwsh .\scripts\setup-config-interactive.ps1'
-    exit 2
+    Wait-BeforeExit -ExitCode 2
 }
 
 try {
@@ -187,7 +201,7 @@ try {
 }
 catch {
     Write-Host "Unable to load configuration: $_" -ForegroundColor Red
-    exit 2
+    Wait-BeforeExit -ExitCode 2
 }
 
 $requiresTokenModules = @()
@@ -226,12 +240,12 @@ try {
 }
 catch {
     Write-Error "Unable to initialize logger: $_"
-    exit 2
+    Wait-BeforeExit -ExitCode 2
 }
 
 Clear-DeferredActions
 $exitCode = Invoke-DevBootstrap -Config $config -RunMode $RunMode -ProjectRoot $projectRoot -Force:$Force.IsPresent
 Invoke-DeferredActions -Silent:$config.general.silent -NoConfirm:$config.general.noConfirm
-exit $exitCode
+Wait-BeforeExit -ExitCode $exitCode
 
 

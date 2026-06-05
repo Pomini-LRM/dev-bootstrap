@@ -90,6 +90,8 @@ Describe 'Script path resolution' {
         $launcherContent = Get-Content -LiteralPath $launcherPath -Raw
 
         $launcherContent | Should -Match "Start-Process -FilePath 'pwsh' -Verb RunAs"
+        $launcherContent | Should -Match '-PauseBeforeExit'
+        $launcherContent | Should -Not -Match '(?im)^pause\s*$'
     }
 }
 

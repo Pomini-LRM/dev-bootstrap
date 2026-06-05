@@ -2,7 +2,7 @@
 setlocal
 net session >nul 2>&1
 if %errorlevel% neq 0 (
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath 'pwsh' -Verb RunAs -WorkingDirectory '%~dp0' -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','%~dp0dev-bootstrap.ps1'"
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath 'pwsh' -Verb RunAs -WorkingDirectory '%~dp0' -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','%~dp0dev-bootstrap.ps1','-PauseBeforeExit'"
   goto :end
 )
 where pwsh >nul 2>nul
@@ -13,7 +13,7 @@ if %errorlevel%==0 (
     echo Install or update PowerShell 7, then retry.
     goto :offerInstall
   )
-  pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev-bootstrap.ps1" %*
+  pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0dev-bootstrap.ps1" -PauseBeforeExit %*
   goto :end
 ) else (
   echo PowerShell 7+ is required. 'pwsh' was not found on PATH.
@@ -49,6 +49,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\install-prereq
 echo.
 echo Prerequisite installer completed. Re-run dev-bootstrap launcher.
 :end
-echo.
-pause
 endlocal
