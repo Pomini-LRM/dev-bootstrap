@@ -245,6 +245,12 @@ foreach ($scriptFile in $scriptFiles) {
     Remove-Item -LiteralPath $scriptFile.FullName -Force
 }
 
+$forbiddenFiles = @(Get-ChildItem -LiteralPath $stagingRoot -Recurse -File -Include '*.ps1', '*.psm1', '*.psd1')
+if ($forbiddenFiles.Count -gt 0) {
+    $names = @($forbiddenFiles | ForEach-Object { $_.FullName }) -join ', '
+    throw "Release package contains forbidden PowerShell source files: $names"
+}
+
 Compress-Archive -Path (Join-Path $stagingRoot '*') -DestinationPath $zipPath -Force
 $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
 "$hash  $([System.IO.Path]::GetFileName($zipPath))" | Set-Content -LiteralPath $shaPath -Encoding ascii
@@ -255,6 +261,8 @@ Write-Host "SHA256 file          : $shaPath" -ForegroundColor Green
 Write-Host "SHA256               : $hash"
 
 if (-not [string]::IsNullOrWhiteSpace($GitHubOutputPath)) {
+    Add-Content -LiteralPath $GitHubOutputPath -Value "exe_path=$exePath"
+    Add-Content -LiteralPath $GitHubOutputPath -Value "exe_name=$([System.IO.Path]::GetFileName($exePath))"
     Add-Content -LiteralPath $GitHubOutputPath -Value "zip_path=$zipPath"
     Add-Content -LiteralPath $GitHubOutputPath -Value "zip_name=$([System.IO.Path]::GetFileName($zipPath))"
     Add-Content -LiteralPath $GitHubOutputPath -Value "sha_path=$shaPath"

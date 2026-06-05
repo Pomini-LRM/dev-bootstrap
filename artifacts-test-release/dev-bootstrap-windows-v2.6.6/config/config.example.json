@@ -1,0 +1,77 @@
+{
+  "$schema": "./config.schema.json",
+  "general": {
+    "logDirectory": "log",
+    "failFast": false,
+    "silent": false,
+    "debug": false,
+    "noConfirm": false,
+    "force": false
+  },
+  "modules": {
+    "appInstaller": {
+      "enabled": true,
+      "force": false,
+      "recommendedApps": {
+        "gnuWin32Make": true,
+        "nvmWindows": true,
+        "notepadplusplus": true,
+        "python31012": false,
+        "python3123": true,
+        "vscode": true,
+        "winget": true
+      },
+      "optionalApps": {
+        "githubCopilot": false,
+        "githubDesktop": false,
+        "inkscape": false,
+        "microsoft365Copilot": false,
+        "pythonLatest": false,
+        "teamviewer": false,
+        "virtualbox": false,
+        "winmerge": false
+      }
+    },
+    "automation": {
+      "enabled": false,
+      "catalog": {
+        "addMakePath": true,
+        "setGitHubUser": false,
+        "desktopLinkForThisApplication": false
+      },
+      "gitHubUser": {
+        "name": "Name Surname",
+        "email": "name.surname@yourcompany.com"
+      }
+    },
+    "github": {
+      "enabled": false,
+      "path": "D:\\GitHub",
+      "usersInclude": ["*"],
+      "usersExclude": [],
+      "organizationsInclude": ["*"],
+      "organizationsExclude": [],
+      "setFolderIcon": true,
+      "retryCount": 3,
+      "retryDelaySeconds": 5
+    },
+    "devops": {
+      "enabled": false,
+      "path": "D:\\DevOps",
+      "projectsInclude": ["*"],
+      "projectsExclude": [],
+      "includeWikis": false,
+      "setFolderIcon": true,
+      "retryCount": 3,
+      "retryDelaySeconds": 5
+    },
+    "acr": {
+      "enabled": false,
+      "registries": ["myregistry"],
+      "imagesInclude": ["*"],
+      "imagesExclude": [],
+      "retryCount": 3,
+      "retryDelaySeconds": 10
+    }
+  }
+}

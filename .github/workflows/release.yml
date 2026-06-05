@@ -92,12 +92,37 @@ jobs:
             -OutputDirectory "$env:RUNNER_TEMP\release" `
             -GitHubOutputPath "$env:GITHUB_OUTPUT"
 
+      - name: Validate ZIP content policy
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zipPath = '${{ steps.build.outputs.zip_path }}'
+          if (-not (Test-Path -LiteralPath $zipPath)) {
+            throw "ZIP asset not found: $zipPath"
+          }
+
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+          try {
+            $forbidden = @($archive.Entries | Where-Object {
+              $_.FullName -match '\.(ps1|psm1|psd1)$'
+            })
+
+            if ($forbidden.Count -gt 0) {
+              $list = @($forbidden | ForEach-Object { $_.FullName }) -join ', '
+              throw "ZIP contains forbidden source files: $list"
+            }
+          }
+          finally {
+            $archive.Dispose()
+          }
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "dev-bootstrap ${{ steps.build.outputs.version }}"
           generate_release_notes: true
           files: |
+            ${{ steps.build.outputs.exe_path }}
             ${{ steps.build.outputs.zip_path }}
             ${{ steps.build.outputs.sha_path }}
 
@@ -111,6 +136,7 @@ jobs:
           [void]$md.AppendLine('|--------|-------|')
           [void]$md.AppendLine("| Tag | ``${{ github.ref_name }}`` |")
           [void]$md.AppendLine("| Version | ``${{ steps.build.outputs.version }}`` |")
+          [void]$md.AppendLine("| Executable | ``${{ steps.build.outputs.exe_name }}`` |")
           [void]$md.AppendLine("| Asset | ``${{ steps.build.outputs.zip_name }}`` |")
           [void]$md.AppendLine("| SHA file | ``${{ steps.build.outputs.sha_name }}`` |")
           [void]$md.AppendLine("| SHA256 | ``${{ steps.build.outputs.sha256 }}`` |")

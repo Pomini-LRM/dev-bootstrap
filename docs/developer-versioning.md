@@ -70,6 +70,14 @@ For maintainers, this command automates:
 
 Then GitHub Actions `Release` workflow publishes the release assets automatically.
 
+Use **GitHub Releases** for this project distribution:
+
+- `dev-bootstrap.exe`
+- `dev-bootstrap-windows-vX.Y.Z.zip`
+- `dev-bootstrap-windows-vX.Y.Z.zip.sha256`
+
+Do **not** use GitHub Packages for this installer payload. Packages are intended for package ecosystems and registries (for example container images, npm, NuGet), while this project publishes downloadable desktop artifacts.
+
 ```powershell
 pwsh ./scripts/Publish-GitHubRelease.ps1 -Part patch
 ```
