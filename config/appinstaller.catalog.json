@@ -88,7 +88,7 @@
       "name": "Visual Studio Code",
       "category": "recommended",
       "wingetId": "Microsoft.VisualStudioCode",
-      "wingetInstallOverride": "/GA /mergetasks='!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles'",
+      "wingetInstallOverride": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /MERGETASKS=!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles",
       "linuxPackage": "code",
       "linuxCommand": "code"
     },

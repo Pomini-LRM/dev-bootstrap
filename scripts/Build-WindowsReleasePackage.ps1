@@ -156,26 +156,6 @@ function New-BundledEntrypointScript {
     Set-Content -LiteralPath $OutputPath -Value $builder.ToString() -Encoding utf8
 }
 
-function New-ReleaseLauncher {
-    [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$Path)
-
-    $content = @'
-@echo off
-setlocal
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~dp0dev-bootstrap.exe' -Verb RunAs -WorkingDirectory '%~dp0' -ArgumentList '-PauseBeforeExit'"
-  goto :end
-)
-"%~dp0dev-bootstrap.exe" -PauseBeforeExit %*
-:end
-endlocal
-'@
-
-    Set-Content -LiteralPath $Path -Value $content -Encoding ascii
-}
-
 if (-not $IsWindows) {
     throw 'Build-WindowsReleasePackage.ps1 must run on Windows.'
 }
@@ -240,17 +220,10 @@ else {
 Copy-Item -LiteralPath $envExamplePath -Destination (Join-Path $stagingRoot '.env.example') -Force
 Copy-Item -LiteralPath $envExamplePath -Destination (Join-Path $stagingRoot '.env') -Force
 
-foreach ($path in @('config', 'docs')) {
+foreach ($path in @('config')) {
     $source = Join-Path $ProjectRoot $path
     if (Test-Path -LiteralPath $source) {
         Copy-Item -LiteralPath $source -Destination (Join-Path $stagingRoot $path) -Recurse -Force
-    }
-}
-
-foreach ($file in @('README.md', 'LICENSE', 'CONTRIBUTING.md', 'SECURITY.md')) {
-    $sourceFile = Join-Path $ProjectRoot $file
-    if (Test-Path -LiteralPath $sourceFile) {
-        Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $stagingRoot $file) -Force
     }
 }
 
@@ -271,8 +244,6 @@ $scriptFiles = Get-ChildItem -LiteralPath $stagingRoot -Recurse -File -Include '
 foreach ($scriptFile in $scriptFiles) {
     Remove-Item -LiteralPath $scriptFile.FullName -Force
 }
-
-New-ReleaseLauncher -Path (Join-Path $stagingRoot 'dev-bootstrap-launcher.cmd')
 
 Compress-Archive -Path (Join-Path $stagingRoot '*') -DestinationPath $zipPath -Force
 $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash

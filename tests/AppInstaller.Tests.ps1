@@ -260,11 +260,11 @@ Describe 'Get-WingetLatestAvailableVersion' {
 Describe 'Get-WingetInstallArguments' {
     It 'adds override arguments when configured' {
         $wingetArgs = Get-WingetInstallArguments -App @{
-            wingetInstallOverride = "/GA /mergetasks='!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles'"
+            wingetInstallOverride = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /MERGETASKS=!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles'
         } -AppId 'Microsoft.VisualStudioCode'
 
         $wingetArgs | Should -Contain '--override'
-        $wingetArgs | Should -Contain "/GA /mergetasks='!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles'"
+        $wingetArgs | Should -Contain '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /MERGETASKS=!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles'
     }
 
     It 'keeps the base winget install arguments when override is absent' {
