@@ -71,97 +71,35 @@ jobs:
   release:
     name: Release
     needs: [lint, test]
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Detect module manifest
-        id: manifest
+      - name: Install PS2EXE
         shell: pwsh
         run: |
-          $manifests = @(Get-ChildItem -Path . -Filter '*.psd1' -Recurse -File |
-              Where-Object {
-                  $_.FullName -notmatch '[/\\]\.github[/\\]' -and
-                  $_.Name -ne 'PSScriptAnalyzerSettings.psd1'
-              })
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name ps2exe -Scope CurrentUser -Force
 
-          if ($manifests.Count -eq 0) {
-              Write-Error 'No .psd1 module manifest found in repository.'
-              exit 1
-          }
-          if ($manifests.Count -gt 1) {
-              $names = ($manifests | ForEach-Object { $_.FullName }) -join ', '
-              Write-Error "Expected 1 module manifest, found $($manifests.Count): $names"
-              exit 1
-          }
-
-          $m = $manifests[0]
-          Write-Host "Module manifest : $($m.FullName)"
-          Write-Host "Module name     : $($m.BaseName)"
-          "module_name=$($m.BaseName)"     >> $env:GITHUB_OUTPUT
-          "module_dir=$($m.DirectoryName)" >> $env:GITHUB_OUTPUT
-
-      - name: Build distribution ZIP
+      - name: Build Windows EXE package
         id: build
         shell: pwsh
         run: |
-          $tag        = '${{ github.ref_name }}'
-          $moduleName = '${{ steps.manifest.outputs.module_name }}'
-          $moduleDir  = '${{ steps.manifest.outputs.module_dir }}'
-          $zipName    = "dev-bootstrap-${tag}.zip"
-          $staging    = Join-Path $env:RUNNER_TEMP 'staging' 'dev-bootstrap'
-
-          New-Item $staging -ItemType Directory -Force | Out-Null
-
-          # ── Copy root module files (.psd1, .psm1, .ps1, .cmd) ────────────
-          foreach ($pattern in @('*.psd1', '*.psm1', '*.ps1', '*.cmd')) {
-              Get-ChildItem -Path $moduleDir -Filter $pattern -File |
-                  Where-Object { $_.Name -ne 'PSScriptAnalyzerSettings.psd1' } |
-                  Copy-Item -Destination $staging
-          }
-
-          # ── Copy essential directories ────────────────────────────────────
-          foreach ($dir in @('src', 'config', 'scripts', 'docs')) {
-              $source = Join-Path $moduleDir $dir
-              if (Test-Path $source) {
-                  Copy-Item $source -Destination (Join-Path $staging $dir) -Recurse
-              }
-          }
-
-          # ── Copy documentation files ──────────────────────────────────────
-          foreach ($file in @('LICENSE', 'README.md', 'CONTRIBUTING.md', 'SECURITY.md')) {
-              $doc = Join-Path $moduleDir $file
-              if (Test-Path $doc) { Copy-Item $doc -Destination $staging }
-          }
-
-          # ── Clean user-specific / backup files from staging ───────────────
-          Get-ChildItem $staging -Recurse -File |
-              Where-Object { $_.Name -match '\.bak(\.|$)' } |
-              Remove-Item -Force
-
-          $userConfig = Join-Path $staging 'config' 'config.json'
-          if (Test-Path $userConfig) { Remove-Item $userConfig -Force }
-
-          # ── Create ZIP ────────────────────────────────────────────────────
-          $zipPath = Join-Path $env:RUNNER_TEMP $zipName
-          Compress-Archive -Path "$staging/*" -DestinationPath $zipPath -Force
-
-          $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash
-          Write-Host "ZIP   : $zipName"
-          Write-Host "SHA256: $hash"
-
-          "zip_path=$zipPath" >> $env:GITHUB_OUTPUT
-          "zip_name=$zipName" >> $env:GITHUB_OUTPUT
-          "sha256=$hash"      >> $env:GITHUB_OUTPUT
+          ./scripts/Build-WindowsReleasePackage.ps1 `
+            -ProjectRoot "$PWD" `
+            -OutputDirectory "$env:RUNNER_TEMP\release" `
+            -GitHubOutputPath "$env:GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "dev-bootstrap ${{ github.ref_name }}"
+          name: "dev-bootstrap ${{ steps.build.outputs.version }}"
           generate_release_notes: true
-          files: ${{ steps.build.outputs.zip_path }}
+          files: |
+            ${{ steps.build.outputs.zip_path }}
+            ${{ steps.build.outputs.sha_path }}
 
       - name: Step Summary
         shell: pwsh
@@ -172,8 +110,9 @@ jobs:
           [void]$md.AppendLine('| Detail | Value |')
           [void]$md.AppendLine('|--------|-------|')
           [void]$md.AppendLine("| Tag | ``${{ github.ref_name }}`` |")
-          [void]$md.AppendLine("| Module | ``${{ steps.manifest.outputs.module_name }}`` |")
+          [void]$md.AppendLine("| Version | ``${{ steps.build.outputs.version }}`` |")
           [void]$md.AppendLine("| Asset | ``${{ steps.build.outputs.zip_name }}`` |")
+          [void]$md.AppendLine("| SHA file | ``${{ steps.build.outputs.sha_name }}`` |")
           [void]$md.AppendLine("| SHA256 | ``${{ steps.build.outputs.sha256 }}`` |")
           [void]$md.AppendLine("| Release | ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }} |")
           $md.ToString() >> $env:GITHUB_STEP_SUMMARY

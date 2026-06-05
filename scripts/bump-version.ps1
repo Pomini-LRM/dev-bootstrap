@@ -99,7 +99,14 @@ function Set-ModuleManifestVersion {
     }
 
     $raw = Get-Content -LiteralPath $Path -Raw -Encoding utf8
-    $updated = [regex]::Replace($raw, "(?m)^\s*ModuleVersion\s*=\s*'.*?'", "    ModuleVersion        = '$Version'")
+    $updated = [regex]::Replace(
+        $raw,
+        "(?m)^(\s*ModuleVersion\s*=\s*)'.*?'",
+        {
+            param($match)
+            return "$($match.Groups[1].Value)'$Version'"
+        }
+    )
     Set-Content -LiteralPath $Path -Value $updated -Encoding utf8
 }
 

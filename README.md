@@ -541,6 +541,7 @@ Final report statuses:
 For contributors and maintainers:
 
 - Versioning workflow: `docs/developer-versioning.md`
+- Windows executable packaging and automated GitHub Release: `docs/developer-versioning.md`
 - App catalog authoring (where to find `wingetId`, `linuxPackage`, `linuxCommand`, and optional `wingetInstallOverride` values): `docs/developer-app-catalog.md`
 - CI quality gates: `.github/workflows/ci.yml`
 - Static analysis policy: `PSScriptAnalyzerSettings.psd1`

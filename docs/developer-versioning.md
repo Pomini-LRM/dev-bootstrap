@@ -39,6 +39,48 @@ pwsh ./scripts/bump-version.ps1 -Part minor
 pwsh ./scripts/bump-version.ps1 -Part major
 ```
 
+## Build Windows Executable Package
+
+Create distributable assets (`.exe` + `.env` template + `config` folder):
+
+```powershell
+pwsh ./scripts/Build-WindowsReleasePackage.ps1
+```
+
+Output is generated under `artifacts/` with:
+
+- `dev-bootstrap-windows-vX.Y.Z.zip`
+- `dev-bootstrap-windows-vX.Y.Z.zip.sha256`
+
+## Publish GitHub Release (Automated)
+
+For maintainers, this command automates:
+
+1. version bump,
+2. quality gate,
+3. commit,
+4. git tag creation,
+5. push to GitHub.
+
+Then GitHub Actions `Release` workflow publishes the release assets automatically.
+
+```powershell
+pwsh ./scripts/Publish-GitHubRelease.ps1 -Part patch
+```
+
+Alternative version increments:
+
+```powershell
+pwsh ./scripts/Publish-GitHubRelease.ps1 -Part minor
+pwsh ./scripts/Publish-GitHubRelease.ps1 -Part major
+```
+
+Useful switches:
+
+- `-SkipVersionBump` if version was already updated.
+- `-SkipQualityGate` only for emergency/manual scenarios.
+- `-SkipPush` to create commit/tag locally and push later.
+
 ## Debug Mode for Scripts
 
 All scripts with `CmdletBinding()` support common PowerShell debug switches.
