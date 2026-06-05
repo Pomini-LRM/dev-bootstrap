@@ -39,6 +39,7 @@ function Get-DefaultConfig {
                     pythonLatest = $false
                     teamviewer = $false
                     virtualbox = $false
+                    winmerge = $false
                 }
             }
             automation = @{

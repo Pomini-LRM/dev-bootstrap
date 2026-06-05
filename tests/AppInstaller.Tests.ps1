@@ -98,6 +98,7 @@ Describe 'Get-EffectiveAppList' {
 
         $keys | Should -Contain 'virtualbox'
         $keys | Should -Contain 'microsoft365Copilot'
+        $keys | Should -Contain 'winmerge'
     }
 }
 
@@ -258,20 +259,20 @@ Describe 'Get-WingetLatestAvailableVersion' {
 
 Describe 'Get-WingetInstallArguments' {
     It 'adds override arguments when configured' {
-        $args = Get-WingetInstallArguments -App @{
+        $wingetArgs = Get-WingetInstallArguments -App @{
             wingetInstallOverride = "/GA /mergetasks='!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles'"
         } -AppId 'Microsoft.VisualStudioCode'
 
-        $args | Should -Contain '--override'
-        $args | Should -Contain "/GA /mergetasks='!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles'"
+        $wingetArgs | Should -Contain '--override'
+        $wingetArgs | Should -Contain "/GA /mergetasks='!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles'"
     }
 
     It 'keeps the base winget install arguments when override is absent' {
-        $args = Get-WingetInstallArguments -App @{} -AppId 'Git.Git'
+        $wingetArgs = Get-WingetInstallArguments -App @{} -AppId 'Git.Git'
 
-        $args | Should -Not -Contain '--override'
-        $args | Should -Contain 'install'
-        $args | Should -Contain 'Git.Git'
+        $wingetArgs | Should -Not -Contain '--override'
+        $wingetArgs | Should -Contain 'install'
+        $wingetArgs | Should -Contain 'Git.Git'
     }
 }
 

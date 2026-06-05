@@ -570,7 +570,11 @@ function Get-WingetInstallArguments {
         $arguments.Add($argument)
     }
 
-    $override = [string]$App.wingetInstallOverride
+    $override = ''
+    if ($App.ContainsKey('wingetInstallOverride') -and $null -ne $App.wingetInstallOverride) {
+        $override = [string]$App.wingetInstallOverride
+    }
+
     if (-not [string]::IsNullOrWhiteSpace($override)) {
         $arguments.Add('--override')
         $arguments.Add($override)

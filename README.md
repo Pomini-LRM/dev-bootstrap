@@ -317,8 +317,11 @@ In `config/config.json`, app toggles are split into `recommendedApps` and `optio
     "githubCopilot": false,
     "githubDesktop": false,
     "inkscape": false,
+    "microsoft365Copilot": false,
     "pythonLatest": false,
-    "teamviewer": false
+    "teamviewer": false,
+    "virtualbox": false,
+    "winmerge": false
   }
 }
 ```
@@ -379,8 +382,11 @@ Developer-only version management and release notes are documented here:
   - `githubCopilot`
   - `githubDesktop`
   - `inkscape`
+  - `microsoft365Copilot`
   - `pythonLatest`
   - `teamviewer`
+  - `virtualbox`
+  - `winmerge`
 
 `force` behavior and precedence:
 

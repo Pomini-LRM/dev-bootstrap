@@ -52,6 +52,7 @@ Describe 'Get-DefaultConfig' {
         $config.modules.appInstaller.optionalApps.pythonLatest | Should -BeFalse
         $config.modules.appInstaller.optionalApps.teamviewer | Should -BeFalse
         $config.modules.appInstaller.optionalApps.virtualbox | Should -BeFalse
+        $config.modules.appInstaller.optionalApps.winmerge | Should -BeFalse
         $config.modules.automation.catalog.desktopLinkForThisApplication | Should -BeFalse
     }
 

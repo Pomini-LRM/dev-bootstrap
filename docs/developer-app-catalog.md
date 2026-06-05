@@ -85,20 +85,22 @@ If an app is moved between categories, update defaults in:
 
 - `src/common/Config.ps1`
 - `config/config.example.json`
+- `config/config.json` when the tracked workspace sample should reflect the new toggle
 
 ## Validation Checklist
 
 1. Add or update entry in `config/appinstaller.catalog.json`.
 2. Keep app ordering by group, then alphabetical within the group.
 3. Ensure `key` uniqueness.
-4. Use `wingetInstallOverride` only when the installer needs non-default winget choices.
-5. Run tests:
+4. Update app toggle defaults in config files and any user-facing docs that enumerate app keys.
+5. Use `wingetInstallOverride` only when the installer needs non-default winget choices.
+6. Run tests:
 
 ```powershell
 Invoke-Pester -Path ./tests/
 ```
 
-6. Optional runtime verification:
+7. Optional runtime verification:
 
 ```powershell
 pwsh ./dev-bootstrap.ps1 -RunMode appInstaller -NoConfirm

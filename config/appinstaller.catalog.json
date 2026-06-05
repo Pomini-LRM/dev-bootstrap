@@ -150,6 +150,13 @@
       "category": "optional",
       "wingetId": "Oracle.VirtualBox",
       "supportedPlatforms": ["Windows"]
+    },
+    {
+      "key": "winmerge",
+      "name": "WinMerge",
+      "category": "optional",
+      "wingetId": "WinMerge.WinMerge",
+      "supportedPlatforms": ["Windows"]
     }
   ]
 }

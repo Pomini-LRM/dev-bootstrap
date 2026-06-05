@@ -28,7 +28,8 @@
         "microsoft365Copilot": false,
         "pythonLatest": false,
         "teamviewer": false,
-        "virtualbox": false
+        "virtualbox": false,
+        "winmerge": false
       }
     },
     "automation": {
