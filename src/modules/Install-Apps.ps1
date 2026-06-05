@@ -497,6 +497,18 @@ function Add-DeferredPowerShellUpgradeAction {
     [CmdletBinding()]
     param()
 
+    if (-not (Test-DeferredPowerShellUpgradeEnvironment)) {
+        return $false
+    }
+
+    $upgradeCommand = 'winget upgrade --id Microsoft.PowerShell --exact --accept-source-agreements --accept-package-agreements'
+    return (Add-DeferredAction -Key 'upgrade-powershell7' -Title 'PowerShell 7 upgrade' -Command $upgradeCommand)
+}
+
+function Test-DeferredPowerShellUpgradeEnvironment {
+    [CmdletBinding()]
+    param()
+
     if (-not (Test-IsWindows)) {
         return $false
     }
@@ -514,8 +526,7 @@ function Add-DeferredPowerShellUpgradeAction {
         return $false
     }
 
-    $upgradeCommand = 'winget upgrade --id Microsoft.PowerShell --exact --accept-source-agreements --accept-package-agreements'
-    return (Add-DeferredAction -Key 'upgrade-powershell7' -Title 'PowerShell 7 upgrade' -Command $upgradeCommand)
+    return $true
 }
 
 function Test-ShouldDeferPowerShellSelfUpgrade {

@@ -289,12 +289,13 @@ Describe 'Get-CommandVersionInfo' {
 
 Describe 'PowerShell deferred upgrade queue' {
     It 'registers deferred action when environment allows it' {
+        Mock -CommandName Test-DeferredPowerShellUpgradeEnvironment -MockWith { $true }
         Mock -CommandName Add-DeferredAction -MockWith { $true }
-        Mock -CommandName Get-PSCallStack -MockWith { @() }
 
         $started = Add-DeferredPowerShellUpgradeAction
 
         $started | Should -BeTrue
+        Assert-MockCalled -CommandName Test-DeferredPowerShellUpgradeEnvironment -Times 1 -Exactly
         Assert-MockCalled -CommandName Add-DeferredAction -Times 1 -Exactly
     }
 }
