@@ -4,12 +4,13 @@
 
 <#
 .SYNOPSIS
-    Builds a Windows release package with EXE, .env template, and config files.
+    Builds a Windows release package with EXE, config, and user documentation.
 
 .DESCRIPTION
     Builds a bundled entry script that inlines runtime source modules,
     compiles it into dev-bootstrap.exe using PS2EXE,
-    prepares a distributable folder, and produces a ZIP + SHA256 file.
+    prepares a distributable folder with user-facing docs,
+    and produces a ZIP + SHA256 file.
 #>
 
 [CmdletBinding()]
@@ -214,6 +215,22 @@ function New-BundledEntrypointScript {
     Set-Content -LiteralPath $OutputPath -Value $builder.ToString() -Encoding utf8
 }
 
+function Get-UserDocumentationPaths {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+
+    return @(
+        'LICENSE'
+        'README.md'
+        'QUICK_START.md'
+        'SECURITY.md'
+        'docs/troubleshooting-fresh-install.md'
+        'docs/acr-authentication.md'
+        'docs/azure-devops-pat.md'
+        'docs/github-classic-token.md'
+    )
+}
+
 if (-not $IsWindows) {
     throw 'Build-WindowsReleasePackage.ps1 must run on Windows.'
 }
@@ -291,6 +308,21 @@ foreach ($path in @('config')) {
     if (Test-Path -LiteralPath $source) {
         Copy-Item -LiteralPath $source -Destination (Join-Path $stagingRoot $path) -Recurse -Force
     }
+}
+
+foreach ($relativeDocPath in (Get-UserDocumentationPaths -ProjectRoot $ProjectRoot)) {
+    $sourceDocPath = Join-Path $ProjectRoot $relativeDocPath
+    if (-not (Test-Path -LiteralPath $sourceDocPath)) {
+        continue
+    }
+
+    $destinationDocPath = Join-Path $stagingRoot $relativeDocPath
+    $destinationDirectory = Split-Path -Parent $destinationDocPath
+    if (-not [string]::IsNullOrWhiteSpace($destinationDirectory)) {
+        New-Item -Path $destinationDirectory -ItemType Directory -Force | Out-Null
+    }
+
+    Copy-Item -LiteralPath $sourceDocPath -Destination $destinationDocPath -Force
 }
 
 if (-not $IncludeUserConfig) {
