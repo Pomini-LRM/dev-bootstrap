@@ -61,7 +61,7 @@ jobs:
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force
 
-        - name: Run format check and PSScriptAnalyzer
+      - name: Run format check and PSScriptAnalyzer
         shell: pwsh
         run: |
           ./scripts/Invoke-CodeQuality.ps1 -SkipTests
