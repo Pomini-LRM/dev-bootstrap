@@ -207,6 +207,71 @@ function Add-RemediationStep {
     }
 }
 
+function Write-ModuleDetails {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ModuleName,
+        [Parameter(Mandatory)][System.Collections.IEnumerable]$Entries
+    )
+
+    $moduleEntries = @($Entries)
+    if ($moduleEntries.Count -eq 0) {
+        return
+    }
+
+    $nameWidth = [Math]::Max(4, (($moduleEntries | ForEach-Object { ([string]$_.Item).Length } | Measure-Object -Maximum).Maximum))
+    $statusWidth = [Math]::Max(6, (($moduleEntries | ForEach-Object { ([string]$_.Status).Length } | Measure-Object -Maximum).Maximum))
+    $messageWidth = [Math]::Max(13, (($moduleEntries | ForEach-Object { ([string]$_.Message).Length } | Measure-Object -Maximum).Maximum))
+
+    Write-Log -Level Info -Message ''
+    Write-Log -Level Info -Message "Module details: $ModuleName"
+    Write-Log -Level Info -Message "  $('NAME'.PadRight($nameWidth))  $('STATUS'.PadRight($statusWidth))  ERROR/MESSAGE"
+    Write-Log -Level Info -Message "  $('-' * $nameWidth)  $('-' * $statusWidth)  $('-' * $messageWidth)"
+
+    foreach ($entry in $moduleEntries) {
+        $nameText = ([string]$entry.Item).PadRight($nameWidth)
+        $statusText = ([string]$entry.Status).PadRight($statusWidth)
+        $messageText = [string]$entry.Message
+        $entryLevel = if (([string]$entry.Status).ToUpperInvariant() -eq 'ERROR') { 'Error' } else { 'Info' }
+
+        Write-Log -Level $entryLevel -Message "  $nameText  $statusText  $messageText"
+    }
+}
+
+function Write-ExecutionDetails {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][System.Collections.IEnumerable]$Entries)
+
+    $entryList = @(
+        $Entries |
+            Where-Object { ([string]$_.Status).ToUpperInvariant() -ne 'NONE' } |
+            Sort-Object -Property Module, Item, Status
+    )
+    if ($entryList.Count -eq 0) {
+        return
+    }
+
+    $moduleWidth = [Math]::Max(6, (($entryList | ForEach-Object { ([string]$_.Module).Length } | Measure-Object -Maximum).Maximum))
+    $nameWidth = [Math]::Max(4, (($entryList | ForEach-Object { ([string]$_.Item).Length } | Measure-Object -Maximum).Maximum))
+    $statusWidth = [Math]::Max(6, (($entryList | ForEach-Object { ([string]$_.Status).Length } | Measure-Object -Maximum).Maximum))
+    $messageWidth = [Math]::Max(13, (($entryList | ForEach-Object { ([string]$_.Message).Length } | Measure-Object -Maximum).Maximum))
+
+    Write-Log -Level Info -Message ''
+    Write-Log -Level Info -Message 'Execution details:'
+    Write-Log -Level Info -Message "  $('MODULE'.PadRight($moduleWidth))  $('NAME'.PadRight($nameWidth))  $('STATUS'.PadRight($statusWidth))  ERROR/MESSAGE"
+    Write-Log -Level Info -Message "  $('-' * $moduleWidth)  $('-' * $nameWidth)  $('-' * $statusWidth)  $('-' * $messageWidth)"
+
+    foreach ($entry in $entryList) {
+        $moduleText = ([string]$entry.Module).PadRight($moduleWidth)
+        $nameText = ([string]$entry.Item).PadRight($nameWidth)
+        $statusText = ([string]$entry.Status).PadRight($statusWidth)
+        $messageText = [string]$entry.Message
+        $entryLevel = if (([string]$entry.Status).ToUpperInvariant() -eq 'ERROR') { 'Error' } else { 'Info' }
+
+        Write-Log -Level $entryLevel -Message "  $moduleText  $nameText  $statusText  $messageText"
+    }
+}
+
 function Write-OrphanSummaryTables {
     [CmdletBinding()]
     param(

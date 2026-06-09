@@ -98,12 +98,7 @@ function Invoke-DevBootstrap {
                 Add-ReportEntries -Entries $moduleResultList
                 Write-Log -Level Info -Message ''
                 Write-StatusSummaryTable -Title "Module summary: $($module.Label)" -Entries $moduleResultList
-
-                $moduleErrorEntries = @($moduleResultList | Where-Object { $_.Status -eq 'ERROR' })
-                foreach ($errorEntry in $moduleErrorEntries) {
-                    $msg = if ([string]::IsNullOrWhiteSpace([string]$errorEntry.Message)) { 'No error details.' } else { [string]$errorEntry.Message }
-                    Write-Log -Level Error -Message "  ERROR $($errorEntry.Item) - $msg"
-                }
+                Write-ModuleDetails -ModuleName $module.Label -Entries $moduleResultList
             }
 
             $moduleErrorCount = @($moduleResultList | Where-Object { $_.Status -eq 'ERROR' }).Count
@@ -164,6 +159,7 @@ function Invoke-DevBootstrap {
     Write-ReportRemediationSteps -Entries $entries
 
     Write-ModuleExecutionSummary -ModuleExecutions $moduleExecutions -TotalOperations $entries.Count -ErrorCount $errorCount -TotalDuration $runTimer.Elapsed
+    Write-ExecutionDetails -Entries $entries
     $executedModuleNames = @(
         $moduleExecutions |
             Where-Object { $_.Status -ne 'SKIPPED' } |

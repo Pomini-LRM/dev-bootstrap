@@ -77,6 +77,65 @@ Describe 'Write-FinalReport' {
     }
 }
 
+Describe 'Write-ModuleDetails' {
+    It 'writes one detail table row per item with status and message' {
+        Mock -CommandName Write-Log
+
+        $entries = @(
+            (New-ReportEntry -Module 'GitHub Sync' -Item 'repo-one' -Status 'ADDED')
+            (New-ReportEntry -Module 'GitHub Sync' -Item 'repo-two' -Status 'ERROR' -Message 'clone failed')
+            (New-ReportEntry -Module 'GitHub Sync' -Item 'repo-three' -Status 'ORPHAN' -Message 'local only')
+        )
+
+        Write-ModuleDetails -ModuleName 'GitHub Sync' -Entries $entries
+
+        Should -Invoke Write-Log -ParameterFilter {
+            $Level -eq 'Info' -and $Message -eq 'Module details: GitHub Sync'
+        } -Times 1
+
+        Should -Invoke Write-Log -ParameterFilter {
+            $Level -eq 'Info' -and $Message -match '^\s+NAME\s+STATUS\s+ERROR/MESSAGE$'
+        } -Times 1
+
+        Should -Invoke Write-Log -ParameterFilter {
+            $Level -eq 'Error' -and $Message -match 'repo-two\s+ERROR\s+clone failed'
+        } -Times 1
+
+        Should -Invoke Write-Log -ParameterFilter {
+            $Level -eq 'Info' -and $Message -match 'repo-three\s+ORPHAN\s+local only'
+        } -Times 1
+    }
+}
+
+Describe 'Write-ExecutionDetails' {
+    It 'writes one detail table row per non-NONE entry including module and message columns' {
+        Mock -CommandName Write-Log
+
+        $entries = @(
+            (New-ReportEntry -Module 'GitHub' -Item 'repo-one' -Status 'NONE')
+            (New-ReportEntry -Module 'DevOps' -Item 'repo-two' -Status 'ERROR' -Message 'pull failed')
+        )
+
+        Write-ExecutionDetails -Entries $entries
+
+        Should -Invoke Write-Log -ParameterFilter {
+            $Level -eq 'Info' -and $Message -eq 'Execution details:'
+        } -Times 1
+
+        Should -Invoke Write-Log -ParameterFilter {
+            $Level -eq 'Info' -and $Message -match '^\s+MODULE\s+NAME\s+STATUS\s+ERROR/MESSAGE$'
+        } -Times 1
+
+        Should -Invoke Write-Log -ParameterFilter {
+            $Level -eq 'Error' -and $Message -match 'DevOps\s+repo-two\s+ERROR\s+pull failed'
+        } -Times 1
+
+        Should -Invoke Write-Log -ParameterFilter {
+            $Message -match 'repo-one\s+NONE'
+        } -Times 0
+    }
+}
+
 AfterAll {
     $testRoot = Join-Path $env:TEMP 'dev-bootstrap-tests-report'
     if (Test-Path $testRoot) {
