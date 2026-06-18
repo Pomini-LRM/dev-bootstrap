@@ -9,6 +9,7 @@
     {
       "key": "azure-cli",
       "name": "Azure CLI",
+      "description": "Cross-platform command-line tool to manage Azure resources and services.",
       "category": "required",
       "wingetId": "Microsoft.AzureCLI",
       "linuxPackage": "azure-cli",
@@ -17,6 +18,7 @@
     {
       "key": "docker",
       "name": "Docker",
+      "description": "Platform for building, sharing, and running containerized applications.",
       "category": "required",
       "wingetId": "Docker.DockerDesktop",
       "linuxPackage": "docker.io",
@@ -25,6 +27,7 @@
     {
       "key": "git",
       "name": "Git",
+      "description": "Distributed version control system for tracking changes in source code.",
       "category": "required",
       "wingetId": "Git.Git",
       "linuxPackage": "git",
@@ -33,6 +36,7 @@
     {
       "key": "helm",
       "name": "Helm",
+      "description": "Package manager for Kubernetes that simplifies deployment of applications.",
       "category": "required",
       "wingetId": "Helm.Helm",
       "supportedPlatforms": ["Windows"],
@@ -41,6 +45,7 @@
     {
       "key": "powershell7",
       "name": "PowerShell 7",
+      "description": "Cross-platform task automation and configuration management framework.",
       "category": "required",
       "wingetId": "Microsoft.PowerShell",
       "linuxPackage": "powershell",
@@ -49,6 +54,7 @@
     {
       "key": "gnuWin32Make",
       "name": "GnuWin32.Make",
+      "description": "GNU Make build automation tool ported to Windows.",
       "category": "recommended",
       "wingetId": "GnuWin32.Make",
       "supportedPlatforms": ["Windows"]
@@ -56,6 +62,7 @@
     {
       "key": "nvmWindows",
       "name": "Node Version Manager for Windows",
+      "description": "Tool to manage multiple Node.js versions on Windows.",
       "category": "recommended",
       "wingetId": "CoreyButler.NVMforWindows",
       "supportedPlatforms": ["Windows"]
@@ -63,6 +70,7 @@
     {
       "key": "notepadplusplus",
       "name": "Notepad++",
+      "description": "Free source code editor with syntax highlighting and plugin support.",
       "category": "recommended",
       "wingetId": "Notepad++.Notepad++",
       "supportedPlatforms": ["Windows"]
@@ -70,6 +78,7 @@
     {
       "key": "python31012",
       "name": "Python 3.10.12",
+      "description": "Popular programming language for scripting, automation, and data science.",
       "category": "recommended",
       "wingetId": "Python.Python.3.10",
       "linuxPackage": "python3.10",
@@ -78,6 +87,7 @@
     {
       "key": "python3123",
       "name": "Python 3.12.3",
+      "description": "Latest stable Python 3.12 release with performance improvements.",
       "category": "recommended",
       "wingetId": "Python.Python.3.12",
       "linuxPackage": "python3.12",
@@ -86,6 +96,7 @@
     {
       "key": "vscode",
       "name": "Visual Studio Code",
+      "description": "Lightweight, extensible code editor with built-in Git and debugging support.",
       "category": "recommended",
       "wingetId": "Microsoft.VisualStudioCode",
       "wingetInstallOverride": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /MERGETASKS=!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles",
@@ -95,6 +106,7 @@
     {
       "key": "winget",
       "name": "Windows Package Manager",
+      "description": "Microsoft's official command-line package manager for Windows.",
       "category": "recommended",
       "wingetId": "Microsoft.AppInstaller",
       "supportedPlatforms": ["Windows"],
@@ -103,6 +115,7 @@
     {
       "key": "githubCopilot",
       "name": "GitHub Copilot",
+      "description": "AI-powered coding assistant that suggests code completions in real-time.",
       "category": "optional",
       "wingetId": "GitHub.Copilot",
       "supportedPlatforms": ["Windows"]
@@ -110,6 +123,7 @@
     {
       "key": "githubDesktop",
       "name": "GitHub Desktop",
+      "description": "GUI application for managing Git repositories and GitHub workflows.",
       "category": "optional",
       "wingetId": "GitHub.GitHubDesktop",
       "supportedPlatforms": ["Windows"]
@@ -117,6 +131,7 @@
     {
       "key": "inkscape",
       "name": "Inkscape",
+      "description": "Free vector graphics editor similar to Adobe Illustrator.",
       "category": "optional",
       "wingetId": "Inkscape.Inkscape",
       "linuxPackage": "inkscape",
@@ -125,6 +140,7 @@
     {
       "key": "microsoft365Copilot",
       "name": "Microsoft 365 Copilot",
+      "description": "AI assistant integrated into Microsoft 365 apps for productivity tasks.",
       "category": "optional",
       "wingetId": "9WZDNCRD29V9",
       "supportedPlatforms": ["Windows"]
@@ -132,14 +148,24 @@
     {
       "key": "pythonLatest",
       "name": "Python (latest)",
+      "description": "Always installs the latest Python 3.x version available.",
       "category": "optional",
       "wingetId": "Python.Python.3",
       "linuxPackage": "python3",
       "linuxCommand": "python3"
     },
     {
+      "key": "tabby",
+      "name": "Tabby",
+      "description": "Highly configurable terminal emulator with SSH, serial, and Telnet support.",
+      "category": "optional",
+      "wingetId": "Eugeny.Tabby",
+      "supportedPlatforms": ["Windows"]
+    },
+    {
       "key": "teamviewer",
       "name": "TeamViewer",
+      "description": "Remote desktop access and support software for cross-platform connectivity.",
       "category": "optional",
       "wingetId": "TeamViewer.TeamViewer",
       "supportedPlatforms": ["Windows"]
@@ -147,6 +173,7 @@
     {
       "key": "virtualbox",
       "name": "VirtualBox",
+      "description": "Free virtualization software for running multiple operating systems.",
       "category": "optional",
       "wingetId": "Oracle.VirtualBox",
       "supportedPlatforms": ["Windows"]
@@ -154,6 +181,7 @@
     {
       "key": "winmerge",
       "name": "WinMerge",
+      "description": "Open source diff and merge tool for comparing files and folders.",
       "category": "optional",
       "wingetId": "WinMerge.WinMerge",
       "supportedPlatforms": ["Windows"]

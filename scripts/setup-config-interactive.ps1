@@ -139,6 +139,21 @@ function Read-AutomationCatalog {
     return ($raw | ConvertFrom-Json -AsHashtable -Depth 30)
 }
 
+function Write-AppCatalogSection {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][array]$Apps,
+        [Parameter(Mandatory)][string]$CategoryTitle
+    )
+
+    Write-Host ''
+    Write-Host "$CategoryTitle apps available:" -ForegroundColor DarkGray
+    foreach ($app in @($Apps | Sort-Object name)) {
+        $desc = if ($app.description) { $app.description } else { '' }
+        Write-Host ("  - {0}: {1}" -f $app.name, $desc) -ForegroundColor DarkGray
+    }
+}
+
 function Merge-Hashtable {
     [CmdletBinding()]
     param(
@@ -438,16 +453,24 @@ if ($config.modules.appInstaller.enabled) {
 
     Write-Host 'Module-required apps are managed automatically based on enabled modules.' -ForegroundColor DarkGray
 
+    $requiredApps = @($catalog.apps | Where-Object { $_.category -eq 'required' })
+    $recommendedApps = @($catalog.apps | Where-Object { $_.category -eq 'recommended' })
+    $optionalAppsFromCatalog = @($catalog.apps | Where-Object { $_.category -eq 'optional' })
+
+    Write-AppCatalogSection -Apps $requiredApps -CategoryTitle 'Required'
+
+    Write-AppCatalogSection -Apps $recommendedApps -CategoryTitle 'Recommended'
     Write-Host ''
     Write-Host 'Recommended apps:' -ForegroundColor DarkGray
-    foreach ($app in @($catalog.apps | Where-Object { $_.category -eq 'recommended' } | Sort-Object name)) {
+    foreach ($app in @($recommendedApps | Sort-Object name)) {
         $prompt = "Enable recommended app: $($app.name)?"
         $config.modules.appInstaller.recommendedApps[$app.key] = Read-YesNo -Prompt $prompt -Default ([bool]$config.modules.appInstaller.recommendedApps[$app.key])
     }
 
+    Write-AppCatalogSection -Apps $optionalAppsFromCatalog -CategoryTitle 'Optional'
     Write-Host ''
     Write-Host 'Optional apps:' -ForegroundColor DarkGray
-    foreach ($app in @($catalog.apps | Where-Object { $_.category -eq 'optional' } | Sort-Object name)) {
+    foreach ($app in @($optionalAppsFromCatalog | Sort-Object name)) {
         $prompt = "Enable optional app: $($app.name)?"
         $config.modules.appInstaller.optionalApps[$app.key] = Read-YesNo -Prompt $prompt -Default ([bool]$config.modules.appInstaller.optionalApps[$app.key])
     }
