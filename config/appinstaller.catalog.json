@@ -143,6 +143,7 @@
       "description": "AI assistant integrated into Microsoft 365 apps for productivity tasks.",
       "category": "optional",
       "wingetId": "9WZDNCRD29V9",
+      "wingetSource": "msstore",
       "supportedPlatforms": ["Windows"]
     },
     {

@@ -165,6 +165,7 @@ Describe 'Winget diagnostics helpers' {
     It 'returns known hints for mapped winget codes' {
         (Get-WingetKnownErrorHint -HexCode '0x8A15002B') | Should -Match 'source/agreement issue'
         (Get-WingetKnownErrorHint -HexCode '0x8A150101') | Should -Match 'metadata/source conflict'
+        (Get-WingetKnownErrorHint -HexCode '0x8A150014') | Should -Match 'Package not found in the selected source'
     }
 
     It 'builds failure message with version summary and hex code' {
@@ -261,18 +262,36 @@ Describe 'Get-WingetInstallArguments' {
     It 'adds override arguments when configured' {
         $wingetArgs = Get-WingetInstallArguments -App @{
             wingetInstallOverride = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /MERGETASKS=!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles'
-        } -AppId 'Microsoft.VisualStudioCode'
+        } -AppId 'Microsoft.VisualStudioCode' -WingetSource 'winget'
 
         $wingetArgs | Should -Contain '--override'
         $wingetArgs | Should -Contain '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /MERGETASKS=!runcode,addcontextmenufiles,addcontextmenufolders,associatewithfiles'
     }
 
     It 'keeps the base winget install arguments when override is absent' {
-        $wingetArgs = Get-WingetInstallArguments -App @{} -AppId 'Git.Git'
+        $wingetArgs = Get-WingetInstallArguments -App @{} -AppId 'Git.Git' -WingetSource 'winget'
 
         $wingetArgs | Should -Not -Contain '--override'
         $wingetArgs | Should -Contain 'install'
         $wingetArgs | Should -Contain 'Git.Git'
+    }
+
+    It 'uses the provided source for install arguments' {
+        $wingetArgs = Get-WingetInstallArguments -App @{} -AppId '9WZDNCRD29V9' -WingetSource 'msstore'
+
+        $sourceIndex = [Array]::IndexOf($wingetArgs, '--source')
+        $sourceIndex | Should -BeGreaterThan -1
+        $wingetArgs[$sourceIndex + 1] | Should -Be 'msstore'
+    }
+}
+
+Describe 'Get-WingetSourceForApp' {
+    It 'defaults to winget when source is not configured' {
+        (Get-WingetSourceForApp -App @{ wingetId = 'Git.Git' }) | Should -Be 'winget'
+    }
+
+    It 'uses normalized configured source when provided' {
+        (Get-WingetSourceForApp -App @{ wingetId = '9WZDNCRD29V9'; wingetSource = ' MSStore ' }) | Should -Be 'msstore'
     }
 }
 

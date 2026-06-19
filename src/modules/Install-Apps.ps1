@@ -398,6 +398,8 @@ function Install-ViaWinget {
         return @{ Status = 'SKIPPED'; Message = 'wingetId not configured' }
     }
 
+    $wingetSource = Get-WingetSourceForApp -App $App
+
     $versionInfo = Get-WindowsAppVersionInfo -App $App
     Write-Log -Level Info -Message "  $(Format-VersionCheckLogMessage -VersionInfo $versionInfo)"
     $isInstalled = $versionInfo.IsInstalled
@@ -428,7 +430,7 @@ function Install-ViaWinget {
         }
 
         Write-ConsoleStatus -Message "  Upgrading $($App.name) via winget (this may take several minutes)..."
-        $upgradeResult = Invoke-WingetUpgradeWithRetry -App $App -AppId $appId
+        $upgradeResult = Invoke-WingetUpgradeWithRetry -App $App -AppId $appId -WingetSource $wingetSource
         if ($upgradeResult.ExitCode -eq 0) {
             $postVersionInfo = Get-WingetVersionInfo -AppId $appId
             Invoke-PostInstallHooks -App $App -Status 'UPDATED'
@@ -453,7 +455,7 @@ function Install-ViaWinget {
     }
 
     Write-ConsoleStatus -Message "  Installing $($App.name) via winget (this may take several minutes)..."
-    $installResult = Invoke-WingetInstallWithRetry -App $App -AppId $appId
+    $installResult = Invoke-WingetInstallWithRetry -App $App -AppId $appId -WingetSource $wingetSource
     if ($installResult.ExitCode -eq 0) {
         $postVersionInfo = Get-WingetVersionInfo -AppId $appId
         Invoke-PostInstallHooks -App $App -Status 'INSTALLED'
@@ -464,7 +466,7 @@ function Install-ViaWinget {
         $existingVersionInfo = ConvertTo-AlreadyPresentVersionInfo -VersionInfo (Get-WindowsAppVersionInfo -App $App)
 
         Write-ConsoleStatus -Message "  Upgrading $($App.name) via winget (this may take several minutes)..."
-        $upgradeResult = Invoke-WingetUpgradeWithRetry -App $App -AppId $appId
+        $upgradeResult = Invoke-WingetUpgradeWithRetry -App $App -AppId $appId -WingetSource $wingetSource
         if ($upgradeResult.ExitCode -eq 0) {
             $postVersionInfo = Get-WingetVersionInfo -AppId $appId
             Invoke-PostInstallHooks -App $App -Status 'UPDATED'
@@ -491,6 +493,22 @@ function Install-ViaWinget {
     }
 
     return @{ Status = 'ERROR'; Message = (Get-WingetFailureMessage -Operation 'install' -ExitCode $installResult.ExitCode -Output $installResult.Output -VersionInfo $versionInfo) }
+}
+
+function Get-WingetSourceForApp {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$App)
+
+    if (-not $App.ContainsKey('wingetSource') -or $null -eq $App.wingetSource) {
+        return 'winget'
+    }
+
+    $source = [string]$App.wingetSource
+    if ([string]::IsNullOrWhiteSpace($source)) {
+        return 'winget'
+    }
+
+    return $source.Trim().ToLowerInvariant()
 }
 
 function Add-DeferredPowerShellUpgradeAction {
@@ -565,7 +583,8 @@ function Get-WingetInstallArguments {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$App,
-        [Parameter(Mandatory)][string]$AppId
+        [Parameter(Mandatory)][string]$AppId,
+        [Parameter(Mandatory)][string]$WingetSource
     )
 
     $arguments = [System.Collections.Generic.List[string]]::new()
@@ -573,7 +592,7 @@ function Get-WingetInstallArguments {
             'install',
             '--id', $AppId,
             '--exact',
-            '--source', 'winget',
+            '--source', $WingetSource,
             '--accept-source-agreements',
             '--accept-package-agreements',
             '--disable-interactivity',
@@ -598,10 +617,11 @@ function Invoke-WingetInstallWithRetry {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$App,
-        [Parameter(Mandatory)][string]$AppId
+        [Parameter(Mandatory)][string]$AppId,
+        [Parameter(Mandatory)][string]$WingetSource
     )
 
-    $wingetArguments = Get-WingetInstallArguments -App $App -AppId $AppId
+    $wingetArguments = Get-WingetInstallArguments -App $App -AppId $AppId -WingetSource $WingetSource
     $output = & winget @wingetArguments 2>&1
     $exitCode = $LASTEXITCODE
 
@@ -621,17 +641,18 @@ function Invoke-WingetUpgradeWithRetry {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][hashtable]$App,
-        [Parameter(Mandatory)][string]$AppId
+        [Parameter(Mandatory)][string]$AppId,
+        [Parameter(Mandatory)][string]$WingetSource
     )
 
-    $output = & winget upgrade --id $AppId --exact --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity --silent 2>&1
+    $output = & winget upgrade --id $AppId --exact --source $WingetSource --accept-source-agreements --accept-package-agreements --disable-interactivity --silent 2>&1
     $exitCode = $LASTEXITCODE
 
     if ($exitCode -ne 0 -and (Test-WingetAppInUseOutput -Output $output)) {
         $closed = Stop-AppProcessesForInstall -App $App
         if ($closed) {
             Write-Log -Level Warning -Message "Detected running process for '$($App.name)'. Retrying winget upgrade after stopping app."
-            $output = & winget upgrade --id $AppId --exact --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity --silent 2>&1
+            $output = & winget upgrade --id $AppId --exact --source $WingetSource --accept-source-agreements --accept-package-agreements --disable-interactivity --silent 2>&1
             $exitCode = $LASTEXITCODE
         }
     }
@@ -994,6 +1015,9 @@ function Get-WingetKnownErrorHint {
         }
         '0X8A150101' {
             return 'Package metadata/source conflict. Run: winget show --id <packageId> --exact, then retry or install manually once.'
+        }
+        '0X8A150014' {
+            return 'Package not found in the selected source. Verify package ID and source. For Microsoft Store IDs (for example 9WZ*), use --source msstore and ensure Store source/policies are enabled.'
         }
         default {
             return 'Run winget manually for full diagnostics and verify network/proxy/policies.'
