@@ -314,12 +314,16 @@ In `config/config.json`, app toggles are split into `recommendedApps` and `optio
     "winget": true
   },
   "optionalApps": {
+    "anydesk": false,
+    "deepl": false,
     "githubCopilot": false,
     "githubDesktop": false,
     "inkscape": false,
     "microsoft365Copilot": false,
     "pythonLatest": false,
+    "syncOutlookGoogleCalendars": false,
     "teamviewer": false,
+    "unigetUi": false,
     "virtualbox": false,
     "winmerge": false
   }
@@ -364,6 +368,7 @@ Developer-only version management and release notes are documented here:
 ### appInstaller
 
 - Installs apps on Windows (winget) and Linux (apt/dnf/yum/zypper).
+- On Windows with winget, the module first runs `winget source update` and `winget upgrade` and logs the result before processing individual apps.
 - Idempotent behavior with `INSTALLED`, `ALREADY_PRESENT`, `SKIPPED`, `ERROR` statuses.
 - On Windows with winget, runtime logs and final report include best-effort version details (`Current`, `Latest`) when detectable.
 - `PowerShell 7` is always treated as required baseline dependency when `appInstaller` runs.
@@ -379,12 +384,16 @@ Developer-only version management and release notes are documented here:
   - `vscode`
   - `winget`
 - Optional app toggles:
+  - `anydesk`
+  - `deepl`
   - `githubCopilot`
   - `githubDesktop`
   - `inkscape`
   - `microsoft365Copilot`
   - `pythonLatest`
+  - `syncOutlookGoogleCalendars`
   - `teamviewer`
+  - `unigetUi`
   - `virtualbox`
   - `winmerge`
 

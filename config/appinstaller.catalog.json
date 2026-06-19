@@ -113,6 +113,22 @@
       "linuxCommand": ""
     },
     {
+      "key": "anydesk",
+      "name": "AnyDesk",
+      "description": "Remote desktop application for fast and secure remote connections.",
+      "category": "optional",
+      "wingetId": "AnyDesk.AnyDesk",
+      "supportedPlatforms": ["Windows"]
+    },
+    {
+      "key": "deepl",
+      "name": "DeepL",
+      "description": "AI-powered translation application for high-quality text translation.",
+      "category": "optional",
+      "wingetId": "DeepL.DeepL",
+      "supportedPlatforms": ["Windows"]
+    },
+    {
       "key": "githubCopilot",
       "name": "GitHub Copilot",
       "description": "AI-powered coding assistant that suggests code completions in real-time.",
@@ -156,6 +172,14 @@
       "linuxCommand": "python3"
     },
     {
+      "key": "syncOutlookGoogleCalendars",
+      "name": "Sync Outlook and Google Calendars",
+      "description": "Synchronizes appointments between Microsoft Outlook and Google Calendar.",
+      "category": "optional",
+      "wingetId": "PaulWoolcock.SyncOutlookandGooglecalendars",
+      "supportedPlatforms": ["Windows"]
+    },
+    {
       "key": "tabby",
       "name": "Tabby",
       "description": "Highly configurable terminal emulator with SSH, serial, and Telnet support.",
@@ -169,6 +193,15 @@
       "description": "Remote desktop access and support software for cross-platform connectivity.",
       "category": "optional",
       "wingetId": "TeamViewer.TeamViewer",
+      "supportedPlatforms": ["Windows"]
+    },
+    {
+      "key": "unigetUi",
+      "name": "UniGetUI",
+      "description": "Graphical interface for popular package managers including winget and Scoop.",
+      "category": "optional",
+      "wingetId": "MartiCliment.UniGetUI",
+      "wingetFallbackId": "MartiCliment.UniGetUI.Pre-Release",
       "supportedPlatforms": ["Windows"]
     },
     {

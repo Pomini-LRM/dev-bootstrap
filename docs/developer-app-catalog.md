@@ -23,6 +23,8 @@ Each app entry defines metadata used by `appInstaller` across platforms:
 - `name`: display name in logs and reports.
 - `category`: one of `required`, `recommended`, `optional`.
 - `wingetId`: package ID for Windows (`winget`).
+- `wingetSource` (optional): winget source to use for the package (defaults to `winget`; use `msstore` for Microsoft Store IDs).
+- `wingetFallbackId` (optional): alternate package ID tried automatically when the primary ID is not found in the selected source (for example a pre-release ID).
 - `wingetInstallOverride` (optional): extra arguments passed to `winget install --override` for installers that need post-install choices, such as VS Code.
 - `linuxPackage`: package name used by Linux package manager.
 - `linuxCommand`: executable command expected after install.

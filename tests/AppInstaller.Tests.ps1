@@ -99,6 +99,18 @@ Describe 'Get-EffectiveAppList' {
         $keys | Should -Contain 'virtualbox'
         $keys | Should -Contain 'microsoft365Copilot'
         $keys | Should -Contain 'winmerge'
+        $keys | Should -Contain 'anydesk'
+        $keys | Should -Contain 'deepl'
+        $keys | Should -Contain 'syncOutlookGoogleCalendars'
+        $keys | Should -Contain 'unigetUi'
+    }
+
+    It 'defines a fallback id for UniGetUI' {
+        $catalog = Read-AppInstallerCatalog -ProjectRoot $projectRoot
+        $uniGet = @($catalog.apps | Where-Object { $_.key -eq 'unigetUi' })[0]
+
+        $uniGet.wingetId | Should -Be 'MartiCliment.UniGetUI'
+        $uniGet.wingetFallbackId | Should -Be 'MartiCliment.UniGetUI.Pre-Release'
     }
 }
 
@@ -292,6 +304,41 @@ Describe 'Get-WingetSourceForApp' {
 
     It 'uses normalized configured source when provided' {
         (Get-WingetSourceForApp -App @{ wingetId = '9WZDNCRD29V9'; wingetSource = ' MSStore ' }) | Should -Be 'msstore'
+    }
+}
+
+Describe 'Winget fallback handling' {
+    It 'returns the configured fallback id when present' {
+        (Get-WingetFallbackId -App @{ wingetFallbackId = 'MartiCliment.UniGetUI.Pre-Release' }) | Should -Be 'MartiCliment.UniGetUI.Pre-Release'
+    }
+
+    It 'returns empty string when no fallback id is configured' {
+        (Get-WingetFallbackId -App @{ wingetId = 'Git.Git' }) | Should -Be ''
+    }
+
+    It 'detects package-not-found by exit code 0x8A150014' {
+        (Test-WingetPackageNotFoundOutput -ExitCode -1978335212 -Output @('')) | Should -BeTrue
+    }
+
+    It 'detects package-not-found from localized output text' {
+        (Test-WingetPackageNotFoundOutput -ExitCode 1 -Output @('Nessun pacchetto trovato con criteri di input corrispondenti.')) | Should -BeTrue
+        (Test-WingetPackageNotFoundOutput -ExitCode 1 -Output @('No package found matching input criteria.')) | Should -BeTrue
+    }
+
+    It 'does not flag unrelated failures as package-not-found' {
+        (Test-WingetPackageNotFoundOutput -ExitCode 1 -Output @('Some other winget error')) | Should -BeFalse
+    }
+}
+
+Describe 'PowerShell self-upgrade defer decision' {
+    It 'does not defer when installed build is newer than source latest' -Skip:(-not $IsWindows) {
+        $versionInfo = @{ IsInstalled = $true; CurrentVersion = '7.6.3.0'; LatestVersion = '7.6.2.0' }
+        (Test-ShouldDeferPowerShellSelfUpgrade -App @{ key = 'powershell7'; wingetId = 'Microsoft.PowerShell' } -VersionInfo $versionInfo) | Should -BeFalse
+    }
+
+    It 'defers when a genuinely newer version is available' -Skip:(-not $IsWindows) {
+        $versionInfo = @{ IsInstalled = $true; CurrentVersion = '7.6.2.0'; LatestVersion = '7.6.3.0' }
+        (Test-ShouldDeferPowerShellSelfUpgrade -App @{ key = 'powershell7'; wingetId = 'Microsoft.PowerShell' } -VersionInfo $versionInfo) | Should -BeTrue
     }
 }
 

@@ -57,6 +57,9 @@ function Invoke-AppInstaller {
 
     if ($platform -eq 'Windows') {
         $packageManager = Get-PreferredWindowsPackageManager -Current $packageManager
+        if ($packageManager.Name -eq 'winget') {
+            Invoke-WingetGlobalRefresh
+        }
     }
 
     $effectiveApps = Get-EffectiveAppList -Config $Config -Catalog $catalog
@@ -424,7 +427,7 @@ function Install-ViaWinget {
 
         $currentVer = [string]$versionInfo.CurrentVersion
         $latestVer = [string]$versionInfo.LatestVersion
-        if (-not [string]::IsNullOrWhiteSpace($currentVer) -and -not [string]::IsNullOrWhiteSpace($latestVer) -and $currentVer -eq $latestVer) {
+        if (-not [string]::IsNullOrWhiteSpace($currentVer) -and -not [string]::IsNullOrWhiteSpace($latestVer) -and -not (Test-ShouldUpgradeInstalledApp -VersionInfo $versionInfo)) {
             $existingVersionInfo = ConvertTo-AlreadyPresentVersionInfo -VersionInfo $versionInfo
             return @{ Status = 'ALREADY_PRESENT'; Message = (Format-WingetVersionMessage -BaseMessage 'Already up to date (winget)' -VersionInfo $existingVersionInfo) }
         }
@@ -460,6 +463,21 @@ function Install-ViaWinget {
         $postVersionInfo = Get-WingetVersionInfo -AppId $appId
         Invoke-PostInstallHooks -App $App -Status 'INSTALLED'
         return @{ Status = 'INSTALLED'; Message = (Format-WingetVersionMessage -BaseMessage 'Installed via winget' -VersionInfo $postVersionInfo) }
+    }
+
+    $fallbackId = Get-WingetFallbackId -App $App
+    if (-not [string]::IsNullOrWhiteSpace($fallbackId) -and (Test-WingetPackageNotFoundOutput -ExitCode $installResult.ExitCode -Output $installResult.Output)) {
+        Write-Log -Level Warning -Message "Package '$appId' not found in source '$wingetSource'. Retrying with fallback id '$fallbackId'."
+        Write-ConsoleStatus -Message "  Installing $($App.name) via winget fallback id (this may take several minutes)..."
+        $fallbackResult = Invoke-WingetInstallWithRetry -App $App -AppId $fallbackId -WingetSource $wingetSource
+        if ($fallbackResult.ExitCode -eq 0) {
+            $postVersionInfo = Get-WingetVersionInfo -AppId $fallbackId
+            Invoke-PostInstallHooks -App $App -Status 'INSTALLED'
+            return @{ Status = 'INSTALLED'; Message = (Format-WingetVersionMessage -BaseMessage 'Installed via winget (fallback id)' -VersionInfo $postVersionInfo) }
+        }
+
+        $installResult = $fallbackResult
+        $appId = $fallbackId
     }
 
     if (Test-WingetAlreadyInstalledOutput -Output $installResult.Output) {
@@ -576,7 +594,70 @@ function Test-ShouldDeferPowerShellSelfUpgrade {
         return $false
     }
 
-    return $current -ne $latest
+    # Defer only when a genuinely newer version is available. When the installed
+    # build is the same as or newer than the source metadata, no upgrade is needed.
+    return (Test-ShouldUpgradeInstalledApp -VersionInfo $VersionInfo)
+}
+
+function Get-WingetFallbackId {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][hashtable]$App)
+
+    if ($App.ContainsKey('wingetFallbackId') -and -not [string]::IsNullOrWhiteSpace([string]$App.wingetFallbackId)) {
+        return [string]$App.wingetFallbackId
+    }
+
+    return ''
+}
+
+function Test-WingetPackageNotFoundOutput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][int]$ExitCode,
+        [Parameter(Mandatory)][object[]]$Output
+    )
+
+    $hexCode = (Convert-WingetExitCodeToHex -ExitCode $ExitCode).ToUpperInvariant()
+    if ($hexCode -eq '0X8A150014') {
+        return $true
+    }
+
+    $text = (@($Output) -join "`n").ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $false
+    }
+
+    return (
+        $text -match 'no package found matching' -or
+        $text -match 'nessun pacchetto trovato'
+    )
+}
+
+function Invoke-WingetGlobalRefresh {
+    [CmdletBinding()]
+    param()
+
+    Write-Log -Level Info -Message 'Refreshing winget sources (winget source update)...'
+    $sourceOutput = & winget source update 2>&1
+    $sourceExit = $LASTEXITCODE
+    foreach ($line in @($sourceOutput)) {
+        $text = ConvertTo-NormalizedWingetOutput -Text ([string]$line)
+        if (-not [string]::IsNullOrWhiteSpace($text)) {
+            Write-Log -Level Info -Message "  [source update] $text"
+        }
+    }
+    Write-Log -Level Info -Message "winget source update completed (exit code $sourceExit)."
+
+    Write-Log -Level Info -Message 'Listing available upgrades (winget upgrade)...'
+    $upgradeOutput = & winget upgrade --accept-source-agreements --disable-interactivity 2>&1
+    $upgradeExit = $LASTEXITCODE
+    foreach ($line in @($upgradeOutput)) {
+        $text = ConvertTo-NormalizedWingetOutput -Text ([string]$line)
+        if (-not [string]::IsNullOrWhiteSpace($text)) {
+            Write-Log -Level Info -Message "  [upgrade] $text"
+        }
+    }
+    Write-Log -Level Info -Message "winget upgrade listing completed (exit code $upgradeExit)."
 }
 
 function Get-WingetInstallArguments {

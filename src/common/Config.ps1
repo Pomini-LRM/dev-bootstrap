@@ -32,12 +32,16 @@ function Get-DefaultConfig {
                     winget = $true
                 }
                 optionalApps = @{
+                    anydesk = $false
+                    deepl = $false
                     githubCopilot = $false
                     githubDesktop = $false
                     inkscape = $false
                     microsoft365Copilot = $false
                     pythonLatest = $false
+                    syncOutlookGoogleCalendars = $false
                     teamviewer = $false
+                    unigetUi = $false
                     virtualbox = $false
                     winmerge = $false
                 }

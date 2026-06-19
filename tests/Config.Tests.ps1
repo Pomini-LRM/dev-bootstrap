@@ -46,11 +46,15 @@ Describe 'Get-DefaultConfig' {
         $config.modules.appInstaller.recommendedApps.python31012 | Should -BeFalse
         $config.modules.appInstaller.recommendedApps.vscode | Should -BeTrue
         $config.modules.appInstaller.recommendedApps.winget | Should -BeTrue
+        $config.modules.appInstaller.optionalApps.anydesk | Should -BeFalse
+        $config.modules.appInstaller.optionalApps.deepl | Should -BeFalse
         $config.modules.appInstaller.optionalApps.githubDesktop | Should -BeFalse
         $config.modules.appInstaller.optionalApps.inkscape | Should -BeFalse
         $config.modules.appInstaller.optionalApps.microsoft365Copilot | Should -BeFalse
         $config.modules.appInstaller.optionalApps.pythonLatest | Should -BeFalse
+        $config.modules.appInstaller.optionalApps.syncOutlookGoogleCalendars | Should -BeFalse
         $config.modules.appInstaller.optionalApps.teamviewer | Should -BeFalse
+        $config.modules.appInstaller.optionalApps.unigetUi | Should -BeFalse
         $config.modules.appInstaller.optionalApps.virtualbox | Should -BeFalse
         $config.modules.appInstaller.optionalApps.winmerge | Should -BeFalse
         $config.modules.automation.catalog.desktopLinkForThisApplication | Should -BeFalse
