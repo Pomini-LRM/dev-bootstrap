@@ -46,6 +46,9 @@ function Invoke-AcrSync {
         return $results
     }
 
+    $acrAuthScope = 'https://management.core.windows.net//.default'
+    $acrAuthResource = 'https://management.core.windows.net/'
+
     try {
         $alreadyAuthenticated = $false
         $accountInfo = & az account show --only-show-errors --output json 2>$null
@@ -62,12 +65,23 @@ function Invoke-AcrSync {
             }
         }
 
+        if ($alreadyAuthenticated) {
+            $tokenProbe = & az account get-access-token --tenant $tenantId --resource $acrAuthResource --only-show-errors 2>&1
+            if ($LASTEXITCODE -ne 0 -or (Test-AzOutputRequiresReauthentication -Output @($tokenProbe))) {
+                $probeText = (@($tokenProbe) -join ' ').Trim()
+                Write-Log -Level Warning -Message "Azure session for tenant '$tenantId' requires interactive re-authentication for ACR access. CLI output: $probeText"
+                $null = & az logout --only-show-errors 2>&1
+                $alreadyAuthenticated = $false
+            }
+        }
+
         if (-not $alreadyAuthenticated) {
             Write-Log -Level Info -Message "Starting interactive Azure login for tenant '$tenantId'."
-            $null = & az login --tenant $tenantId --allow-no-subscriptions --only-show-errors 2>&1
+            $loginOutput = & az login --tenant $tenantId --allow-no-subscriptions --scope $acrAuthScope --only-show-errors 2>&1
 
             if ($LASTEXITCODE -ne 0) {
-                $results.Add((New-ReportEntry -Module 'ACR' -Item 'AUTH' -Status 'ERROR' -Message 'Azure login failed'))
+                $loginText = (@($loginOutput) -join ' ').Trim()
+                $results.Add((New-ReportEntry -Module 'ACR' -Item 'AUTH' -Status 'ERROR' -Message "Azure login failed. CLI output: $loginText"))
                 return $results
             }
         }
@@ -315,6 +329,26 @@ function Invoke-AcrSync {
     }
 
     return $results
+}
+
+function Test-AzOutputRequiresReauthentication {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object[]]$Output)
+
+    $text = (@($Output) -join "`n").ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $false
+    }
+
+    return (
+        $text -match 'aadsts50076' -or
+        $text -match 'status_interactionrequired' -or
+        $text -match 'interactionrequired' -or
+        $text -match '\binteraction_required\b' -or
+        $text -match '\binvalid_grant\b' -or
+        $text -match 'authenticate interactively' -or
+        $text -match 'run the command below to authenticate interactively'
+    )
 }
 
 function Get-AcrRegistryRepositories {
