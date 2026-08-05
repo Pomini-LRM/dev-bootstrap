@@ -347,6 +347,126 @@ Describe 'ACR result coherence' {
         $script:logoutPerformed | Should -BeTrue
         $script:loginPerformed | Should -BeTrue
     }
+
+    It 'falls back to the most recent manifest tag when latest is missing for mediaformat' {
+        [System.Environment]::SetEnvironmentVariable('AZURE_TENANT_ID', '51835014-d218-4754-b420-16de4790eedf', 'Process')
+
+        $script:acrPulledImages = [System.Collections.Generic.List[string]]::new()
+        $manifestRows = @(
+            [PSCustomObject]@{ tag = '20260420.1'; lastUpdateTime = '2026-04-20T10:00:00Z'; createdTime = '2026-04-20T10:00:00Z'; includeTagsProperty = $true }
+            [PSCustomObject]@{ tag = '20260427.1'; lastUpdateTime = '2026-04-27T06:14:42.262942Z'; createdTime = '2026-04-27T06:14:42.262942Z'; includeTagsProperty = $true }
+            [PSCustomObject]@{ tag = '20260301.5'; lastUpdateTime = '2026-03-01T12:00:00Z'; createdTime = '2026-03-01T12:00:00Z'; includeTagsProperty = $true }
+            [PSCustomObject]@{ tag = ''; lastUpdateTime = '2026-05-01T00:00:00Z'; createdTime = '2026-05-01T00:00:00Z'; includeTagsProperty = $false }
+        )
+
+        $manifestRowsWithOrdering = @($manifestRows | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.tag) } | ForEach-Object {
+                $effectiveTimestampText = [string]$_.lastUpdateTime
+                if ([string]::IsNullOrWhiteSpace($effectiveTimestampText)) {
+                    $effectiveTimestampText = [string]$_.createdTime
+                }
+
+                [PSCustomObject]@{
+                    tag = [string]$_.tag
+                    effectiveTimestamp = [DateTimeOffset]::Parse(
+                        $effectiveTimestampText,
+                        [System.Globalization.CultureInfo]::InvariantCulture,
+                        [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal
+                    )
+                }
+            })
+
+        $expectedFallbackRow = @($manifestRowsWithOrdering | Sort-Object -Property @{ Expression = { $_.effectiveTimestamp }; Descending = $true } | Select-Object -First 1)[0]
+        $expectedFallbackTag = [string]$expectedFallbackRow.tag
+        $expectedFallbackTimestampCore = @($manifestRowsWithOrdering | Where-Object { $_.tag -eq $expectedFallbackTag } | Select-Object -First 1)[0].effectiveTimestamp.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffffff', [System.Globalization.CultureInfo]::InvariantCulture)
+
+        Mock -CommandName Test-CommandExists -MockWith { $true }
+        Mock -CommandName Get-AcrRegistryNetworkState -MockWith {
+            @{ IsReachable = $true; LoginServer = 'acrpominishareddev.azurecr.io'; Addresses = @('10.1.0.6'); HasPrivateAddress = $true; Message = 'ok' }
+        }
+        Mock -CommandName docker -MockWith {
+            $joined = ($args -join ' ')
+
+            if ($joined -match '^info') {
+                $global:LASTEXITCODE = 0
+                return 'Docker is running'
+            }
+
+            if ($joined -match '^pull\s+(?<image>.+)$') {
+                $image = [string]$Matches['image']
+                $script:acrPulledImages.Add($image)
+
+                if ($image -eq 'acrpominishareddev.azurecr.io/mediaformat') {
+                    $global:LASTEXITCODE = 1
+                    return 'Error response from daemon: manifest for acrpominishareddev.azurecr.io/mediaformat:latest not found: manifest unknown'
+                }
+
+                if ($image -eq "acrpominishareddev.azurecr.io/mediaformat:$expectedFallbackTag") {
+                    $global:LASTEXITCODE = 0
+                    return 'Downloaded newer image'
+                }
+            }
+
+            $global:LASTEXITCODE = 0
+            return ''
+        }
+        Mock -CommandName az -MockWith {
+            $joined = ($args -join ' ').ToLowerInvariant()
+            $global:LASTEXITCODE = 0
+
+            if ($joined -match '^account show') {
+                return '{"tenantId":"51835014-d218-4754-b420-16de4790eedf"}'
+            }
+
+            if ($joined -match '^acr check-health') {
+                return 'Challenge endpoint https://acrpominishareddev.azurecr.io/v2/ : OK`nFetch access token successfully for acrpominishareddev.azurecr.io : OK'
+            }
+
+            if ($joined -match '^acr repository list') {
+                return 'mediaformat'
+            }
+
+            if ($joined -match '^acr repository show-tags') {
+                return '20260427.1'
+            }
+
+            if ($joined -match '^acr login --name') {
+                return 'Login Succeeded'
+            }
+
+            if ($joined -match '^acr manifest list-metadata') {
+                return @(
+                    $manifestRows | ForEach-Object {
+                        $manifestObject = @{
+                            Registry = 'acrpominishareddev'
+                            Repository = 'mediaformat'
+                            createdTime = $_.createdTime
+                            lastUpdateTime = $_.lastUpdateTime
+                        }
+
+                        if ($_.includeTagsProperty) {
+                            $manifestObject.tags = @($_.tag)
+                        }
+
+                        $manifestObject
+                    }
+                ) | ConvertTo-Json -Depth 6
+            }
+
+            return ''
+        }
+
+        $config = @{ modules = @{ acr = @{ registries = @('acrpominishareddev'); imagesInclude = @('mediaformat'); imagesExclude = @(); retryCount = 1; retryDelaySeconds = 0 } } }
+        $results = @(Invoke-AcrSync -Config $config -ProjectRoot $script:projectRoot)
+        $successEntries = @($results | Where-Object { $_.Status -in @('ADDED', 'UPDATED', 'NONE') })
+
+        (@($results | Where-Object { $_.Status -eq 'ERROR' })).Count | Should -Be 0
+        $successEntries.Count | Should -Be 1
+        $script:acrPulledImages | Should -Contain 'acrpominishareddev.azurecr.io/mediaformat'
+        $script:acrPulledImages | Should -Contain "acrpominishareddev.azurecr.io/mediaformat:$expectedFallbackTag"
+        $successEntries[0].Message | Should -Match ([regex]::Escape("Fallback tag selected: '$expectedFallbackTag'"))
+        $successEntries[0].Message | Should -Match "last update: $([regex]::Escape($expectedFallbackTimestampCore))(?:Z|\+00:00)"
+        $successEntries[0].Message | Should -Match 'source: lastUpdateTime'
+    }
 }
 
 AfterAll {
@@ -359,3 +479,4 @@ AfterAll {
         Remove-Item -Path $testRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
+

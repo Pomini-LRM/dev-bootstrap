@@ -301,22 +301,27 @@ function Invoke-AcrSync {
         try {
             Write-ConsoleStatus -Message "  Pulling image '$resolvedImage' (download in progress, this may take several minutes)..."
 
-            $pullResult = Invoke-WithRetry -MaxRetries $retryCount -BaseDelaySeconds $retryDelay -OperationName "docker pull $resolvedImage" -ScriptBlock {
-                $captured = [System.Collections.Generic.List[string]]::new()
-                & docker pull $resolvedImage 2>&1 | ForEach-Object {
-                    $line = [string]$_
-                    $captured.Add($line)
-                    Write-ConsoleStatus -Message "    $line"
-                }
-                if ($LASTEXITCODE -ne 0) {
-                    throw "docker pull failed"
-                }
-                return ($captured -join "`n")
+            $pullOutcome = Invoke-AcrPullWithLatestFallback -ResolvedImage $resolvedImage -RetryCount $retryCount -RetryDelaySeconds $retryDelay
+            $pullResult = [string]$pullOutcome.Output
+            $effectiveImage = [string]$pullOutcome.EffectiveImage
+            $fallbackMessage = ''
+
+            if ($pullOutcome.UsedFallback) {
+                $fallbackTag = [string]$pullOutcome.FallbackTag
+                $fallbackTimestamp = [string]$pullOutcome.FallbackLastUpdateTime
+                $fallbackSource = [string]$pullOutcome.FallbackTimestampSource
+                $fallbackMessage = "Fallback tag selected: '$fallbackTag' (last update: $fallbackTimestamp, source: $fallbackSource)."
+                Write-Log -Level Info -Message "  Fallback pull completed using '$effectiveImage'. $fallbackMessage"
             }
 
             $timer.Stop()
             $status = if ($pullResult -match 'up to date') { 'NONE' } elseif ($pullResult -match 'Downloaded newer image') { 'UPDATED' } else { 'ADDED' }
-            $entry = New-ReportEntry -Module 'ACR' -Item $item.Item -Status $status -Duration $timer.Elapsed
+            if ([string]::IsNullOrWhiteSpace($fallbackMessage)) {
+                $entry = New-ReportEntry -Module 'ACR' -Item $item.Item -Status $status -Duration $timer.Elapsed
+            }
+            else {
+                $entry = New-ReportEntry -Module 'ACR' -Item $item.Item -Status $status -Message $fallbackMessage -Duration $timer.Elapsed
+            }
             $results.Add($entry)
             Write-AcrImageEntryLog -Entry $entry
         }
@@ -349,6 +354,310 @@ function Test-AzOutputRequiresReauthentication {
         $text -match 'authenticate interactively' -or
         $text -match 'run the command below to authenticate interactively'
     )
+}
+
+function Invoke-AcrPullWithLatestFallback {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ResolvedImage,
+        [int]$RetryCount = 3,
+        [int]$RetryDelaySeconds = 10
+    )
+
+    try {
+        $output = Invoke-AcrDockerPull -ImageReference $ResolvedImage -RetryCount $RetryCount -RetryDelaySeconds $RetryDelaySeconds
+        return [PSCustomObject]@{
+            Output = $output
+            EffectiveImage = $ResolvedImage
+            UsedFallback = $false
+            FallbackTag = ''
+            FallbackLastUpdateTime = ''
+            FallbackTimestampSource = ''
+        }
+    }
+    catch {
+        $pullFailureText = [string]$_
+        $reference = Resolve-AcrImageReference -ImageReference $ResolvedImage
+
+        if (-not (Test-AcrFallbackCandidateLookupEligible -Reference $reference)) {
+            throw
+        }
+
+        $latestTagCandidate = Get-AcrMostRecentTaggedManifest -Registry $reference.Registry -Repository $reference.Repository -RetryCount $RetryCount -RetryDelaySeconds $RetryDelaySeconds
+        if (-not $latestTagCandidate) {
+            throw "docker pull failed for '$ResolvedImage'. Tag 'latest' is unavailable and no alternative tagged manifest was found."
+        }
+
+        if (-not (Test-AcrLatestTagFallbackEligible -FailureText $pullFailureText)) {
+            Write-Log -Level Warning -Message "Image '$ResolvedImage' pull failed. Attempting fallback with most recent ACR tag '$($latestTagCandidate.Tag)' based on manifest metadata."
+        }
+
+        $fallbackImage = "$($reference.Registry).azurecr.io/$($reference.Repository):$($latestTagCandidate.Tag)"
+        Write-Log -Level Warning -Message "Image '$ResolvedImage' does not expose tag 'latest'. Falling back to '$fallbackImage' (timestamp: $($latestTagCandidate.Timestamp.ToString('o')))."
+
+        $fallbackOutput = Invoke-AcrDockerPull -ImageReference $fallbackImage -RetryCount $RetryCount -RetryDelaySeconds $RetryDelaySeconds
+        return [PSCustomObject]@{
+            Output = $fallbackOutput
+            EffectiveImage = $fallbackImage
+            UsedFallback = $true
+            FallbackTag = [string]$latestTagCandidate.Tag
+            FallbackLastUpdateTime = [string]$latestTagCandidate.LastUpdateTime
+            FallbackTimestampSource = [string]$latestTagCandidate.TimestampSource
+        }
+    }
+}
+
+function Invoke-AcrDockerPull {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ImageReference,
+        [int]$RetryCount = 3,
+        [int]$RetryDelaySeconds = 10
+    )
+
+    return (Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "docker pull $ImageReference" -ScriptBlock {
+            $captured = [System.Collections.Generic.List[string]]::new()
+            & docker pull $ImageReference 2>&1 | ForEach-Object {
+                $line = [string]$_
+                $captured.Add($line)
+                Write-ConsoleStatus -Message "    $line"
+            }
+
+            if ($LASTEXITCODE -ne 0) {
+                $failureText = ($captured -join ' ').Trim()
+                if ([string]::IsNullOrWhiteSpace($failureText)) {
+                    throw "docker pull failed for '$ImageReference'"
+                }
+
+                throw "docker pull failed for '$ImageReference': $failureText"
+            }
+
+            return ($captured -join "`n")
+        })
+}
+
+function Resolve-AcrImageReference {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ImageReference)
+
+    if ($ImageReference -notmatch '^(?<registry>[^\.]+)\.azurecr\.io/(?<path>.+)$') {
+        return [PSCustomObject]@{
+            Registry = ''
+            Repository = ''
+            Tag = ''
+            Digest = ''
+        }
+    }
+
+    $registry = [string]$Matches['registry']
+    $path = [string]$Matches['path']
+    $repository = $path
+    $tag = ''
+    $digest = ''
+
+    if ($path -match '^(?<repo>.+)@(?<digest>sha256:[0-9a-fA-F]{64})$') {
+        $repository = [string]$Matches['repo']
+        $digest = [string]$Matches['digest']
+    }
+    elseif ($path -match '^(?<repo>.+):(?<tag>[^/]+)$') {
+        $repository = [string]$Matches['repo']
+        $tag = [string]$Matches['tag']
+    }
+
+    return [PSCustomObject]@{
+        Registry = $registry
+        Repository = $repository
+        Tag = $tag
+        Digest = $digest
+    }
+}
+
+function Test-AcrFallbackCandidateLookupEligible {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][pscustomobject]$Reference)
+
+    if ([string]::IsNullOrWhiteSpace($Reference.Registry) -or [string]::IsNullOrWhiteSpace($Reference.Repository)) {
+        return $false
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($Reference.Tag) -or -not [string]::IsNullOrWhiteSpace($Reference.Digest)) {
+        return $false
+    }
+
+    return $true
+}
+
+function Test-AcrLatestTagFallbackEligible {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$FailureText
+    )
+
+    $normalized = $FailureText.ToLowerInvariant()
+    $mentionsLatest = ($normalized -match '\blatest\b')
+    $missingTagSignals = (
+        $normalized -match 'manifest unknown' -or
+        $normalized -match 'tag does not exist' -or
+        $normalized -match 'not found' -or
+        $normalized -match 'name unknown' -or
+        $normalized -match 'failed to resolve reference' -or
+        $normalized -match 'no such manifest'
+    )
+
+    return ($mentionsLatest -and $missingTagSignals)
+}
+
+function Get-AcrMostRecentTaggedManifest {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Registry,
+        [Parameter(Mandatory)][string]$Repository,
+        [int]$RetryCount = 3,
+        [int]$RetryDelaySeconds = 10
+    )
+
+    $metadataOutput = Invoke-WithRetry -MaxRetries $RetryCount -BaseDelaySeconds $RetryDelaySeconds -OperationName "ACR manifest list-metadata $Registry/$Repository" -ScriptBlock {
+        $out = & az acr manifest list-metadata --registry $Registry --name $Repository --orderby time_desc --only-show-errors --output json 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $errorText = (@($out) -join ' ').Trim()
+            throw "Unable to list manifests for $Registry/$Repository. CLI output: $errorText"
+        }
+
+        return (@($out) -join "`n")
+    }
+
+    $metadataText = [string]$metadataOutput
+    if ([string]::IsNullOrWhiteSpace($metadataText)) {
+        return $null
+    }
+
+    try {
+        $manifests = @($metadataText | ConvertFrom-Json)
+    }
+    catch {
+        throw "Unable to parse manifest metadata for $Registry/$Repository. Raw output: $metadataText"
+    }
+
+    $candidates = [System.Collections.Generic.List[object]]::new()
+    foreach ($manifest in $manifests) {
+        $manifestProperties = $manifest.PSObject.Properties
+
+        $timestampSource = 'lastUpdateTime'
+        $lastUpdateValue = if ($manifestProperties['lastUpdateTime']) { $manifestProperties['lastUpdateTime'].Value } else { $null }
+        $createdValue = if ($manifestProperties['createdTime']) { $manifestProperties['createdTime'].Value } else { $null }
+
+        $timestampText = Convert-AcrTimestampToIsoString -Value $lastUpdateValue
+        if ([string]::IsNullOrWhiteSpace($timestampText)) {
+            $timestampSource = 'createdTime'
+            $timestampText = Convert-AcrTimestampToIsoString -Value $createdValue
+        }
+        if ([string]::IsNullOrWhiteSpace($timestampText)) {
+            continue
+        }
+
+        $timestampOffset = [DateTimeOffset]::MinValue
+        if (-not [DateTimeOffset]::TryParse(
+                $timestampText,
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal,
+                [ref]$timestampOffset
+            )) {
+            continue
+        }
+        $timestampUtc = $timestampOffset.UtcDateTime
+
+        $tags = @(Get-AcrManifestTagsFromMetadata -Manifest $manifest)
+        if ($tags.Count -eq 0) {
+            continue
+        }
+
+        foreach ($tag in $tags) {
+            if ([string]::Equals($tag, 'latest', [System.StringComparison]::OrdinalIgnoreCase)) {
+                continue
+            }
+
+            $candidates.Add([PSCustomObject]@{
+                    Tag = $tag
+                    Timestamp = $timestampUtc
+                    LastUpdateTime = $timestampText
+                    TimestampSource = $timestampSource
+                })
+        }
+    }
+
+    if ($candidates.Count -eq 0) {
+        return $null
+    }
+
+    return @($candidates | Sort-Object -Property Timestamp -Descending | Select-Object -First 1)[0]
+}
+
+function Get-AcrManifestTagsFromMetadata {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object]$Manifest)
+
+    $properties = $Manifest.PSObject.Properties
+    $values = [System.Collections.Generic.List[object]]::new()
+
+    if ($properties['tags']) {
+        $values.Add($properties['tags'].Value)
+    }
+    if ($properties['tag']) {
+        $values.Add($properties['tag'].Value)
+    }
+
+    if ($values.Count -eq 0) {
+        return @()
+    }
+
+    $normalized = [System.Collections.Generic.List[string]]::new()
+    foreach ($value in $values) {
+        if ($null -eq $value) {
+            continue
+        }
+
+        if ($value -is [string]) {
+            if (-not [string]::IsNullOrWhiteSpace($value)) {
+                $normalized.Add($value.Trim())
+            }
+            continue
+        }
+
+        if ($value -is [System.Collections.IEnumerable]) {
+            foreach ($entry in $value) {
+                $text = [string]$entry
+                if (-not [string]::IsNullOrWhiteSpace($text)) {
+                    $normalized.Add($text.Trim())
+                }
+            }
+        }
+    }
+
+    return @($normalized | Select-Object -Unique)
+}
+
+function Convert-AcrTimestampToIsoString {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $false)][object]$Value)
+
+    if ($null -eq $Value) {
+        return ''
+    }
+
+    if ($Value -is [DateTimeOffset]) {
+        return $Value.ToUniversalTime().ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+    }
+
+    if ($Value -is [DateTime]) {
+        return $Value.ToUniversalTime().ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+    }
+
+    $text = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return ''
+    }
+
+    return $text.Trim()
 }
 
 function Get-AcrRegistryRepositories {
